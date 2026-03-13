@@ -2,12 +2,14 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { GoogleOAuthProvider } from "@react-oauth/google";
+import { Toaster } from "sonner";
 
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Authentication | Code Swayam",
-  description: "Centralized login and security for Code Swayam applications.",
+  title: "CodeSwayam — One Account, Every Tool",
+  description:
+    "Sign in once at auth.codeswayam.com and access every app across the CodeSwayam platform. Secure SSO with Google OAuth, role-based access, and enterprise-grade cookie security.",
 };
 
 export default function RootLayout({
@@ -18,7 +20,10 @@ export default function RootLayout({
   return (
     <GoogleOAuthProvider clientId={process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || ""}>
       <html lang="en">
-        <body className={`${inter.className} bg-gray-50 min-h-screen`}>{children}</body>
+        <body className={`${inter.className} bg-background min-h-screen`}>
+          {children}
+          <Toaster richColors position="top-right" />
+        </body>
       </html>
     </GoogleOAuthProvider>
   );

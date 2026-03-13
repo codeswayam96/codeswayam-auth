@@ -1,33 +1,49 @@
 "use client";
 
-import { useState, Suspense, useEffect } from "react";
+import { useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { GoogleLogin } from "@react-oauth/google";
-import axios from "axios";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
+import { Loader2, Zap, Eye, EyeOff, AlertCircle } from "lucide-react";
 
 function LoginForm() {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
+    const [showPassword, setShowPassword] = useState(false);
 
     const searchParams = useSearchParams();
-    const redirectUrl = searchParams.get("redirect") || "http://localhost:3004/dashboard";
+    const defaultRedirect =
+        process.env.NEXT_PUBLIC_DEFAULT_REDIRECT ||
+        (process.env.NODE_ENV === "production"
+            ? "https://www.codeswayam.com/dashboard"
+            : "http://localhost:3004/dashboard");
+    const redirectUrl = searchParams.get("redirect") || defaultRedirect;
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 
     const handleGoogleSuccess = async (credentialResponse: any) => {
         try {
             setLoading(true);
             setError("");
-            const res = await axios.post(`${apiUrl}/auth/google`, {
-                token: credentialResponse.credential
-            }, { withCredentials: true });
+            const res = await fetch(`${apiUrl}/auth/google`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ token: credentialResponse.credential }),
+                credentials: "include",
+            });
 
-            if (res.status === 200 || res.status === 201) {
+            if (res.ok) {
                 window.location.href = redirectUrl;
+            } else {
+                throw new Error("Google login failed");
             }
-        } catch (err: any) {
+        } catch {
             setError("Google login failed. Please try again.");
         } finally {
             setLoading(false);
@@ -62,63 +78,64 @@ function LoginForm() {
 
     return (
         <div className="space-y-6">
-            <form onSubmit={handleLogin} className="space-y-5">
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Email Address</label>
-                    <input
+            <form onSubmit={handleLogin} className="space-y-4">
+                <div className="space-y-2">
+                    <Label htmlFor="email">Email Address</Label>
+                    <Input
+                        id="email"
                         type="email"
                         required
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         placeholder="you@example.com"
-                        className="block w-full rounded-lg border border-gray-300 py-2.5 px-3 text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-[#00ADB5] focus:border-transparent outline-none transition-shadow sm:text-sm"
                     />
                 </div>
 
-                <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                        <label className="block text-sm font-medium text-gray-700">Password</label>
-                        <span className="text-xs text-[#00ADB5] cursor-pointer hover:underline">Forgot password?</span>
+                <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                        <Label htmlFor="password">Password</Label>
+                        <Link href="/forgot-password" className="text-xs text-primary hover:underline">
+                            Forgot password?
+                        </Link>
                     </div>
-                    <input
-                        type="password"
-                        required
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        placeholder="••••••••"
-                        className="block w-full rounded-lg border border-gray-300 py-2.5 px-3 text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-[#00ADB5] focus:border-transparent outline-none transition-shadow sm:text-sm"
-                    />
+                    <div className="relative">
+                        <Input
+                            id="password"
+                            type={showPassword ? "text" : "password"}
+                            required
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            placeholder="••••••••"
+                        />
+                        <button
+                            type="button"
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                            onClick={() => setShowPassword(!showPassword)}
+                        >
+                            {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                    </div>
                 </div>
 
                 {error && (
-                    <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-600 font-medium">
+                    <div className="flex items-center gap-2 rounded-lg bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">
+                        <AlertCircle size={16} className="shrink-0" />
                         {error}
                     </div>
                 )}
 
-                <button
-                    type="submit"
-                    disabled={loading}
-                    className="flex w-full justify-center rounded-lg bg-[#222831] px-3 py-3 text-sm font-semibold text-white shadow-sm hover:bg-[#393E46] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#00ADB5] transition-colors disabled:opacity-50"
-                >
-                    {loading ? (
-                        <span className="flex items-center gap-2">
-                            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                            </svg>
-                            Signing in...
-                        </span>
-                    ) : "Sign in to your account"}
-                </button>
+                <Button type="submit" className="w-full" disabled={loading}>
+                    {loading && <Loader2 size={16} className="animate-spin" />}
+                    {loading ? "Signing in..." : "Sign in to your account"}
+                </Button>
             </form>
 
             <div className="relative">
-                <div className="absolute inset-0 flex items-center" aria-hidden="true">
-                    <div className="w-full border-t border-gray-200"></div>
+                <div className="absolute inset-0 flex items-center">
+                    <Separator />
                 </div>
-                <div className="relative flex justify-center text-sm font-medium leading-6">
-                    <span className="bg-white px-6 text-gray-400">Or continue with</span>
+                <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-card px-2 text-muted-foreground">Or continue with</span>
                 </div>
             </div>
 
@@ -138,34 +155,29 @@ function LoginForm() {
 
 export default function LoginPage() {
     return (
-        <div className="flex min-h-screen flex-col justify-center py-12 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-50 to-gray-100">
-            <div className="sm:mx-auto sm:w-full sm:max-w-md">
-                <div className="flex justify-center flex-col items-center">
-                    <span className="flex h-12 w-12 rounded-2xl bg-gradient-to-br from-[#00ADB5] to-[#007C83] text-white font-bold items-center justify-center text-xl shadow-lg mb-5">
-                        CS
-                    </span>
-                    <h2 className="text-center text-2xl font-bold leading-9 tracking-tight text-gray-900">
-                        Sign in to Code Swayam
-                    </h2>
-                    <p className="mt-2 text-center text-sm text-gray-500">
-                        Use your central account to access all tools
-                    </p>
-                </div>
-            </div>
-
-            <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-[480px]">
-                <div className="bg-white px-6 py-10 shadow-sm ring-1 ring-gray-100 sm:rounded-2xl sm:px-12">
-                    <Suspense fallback={<div className="text-center text-sm text-gray-500 py-4">Loading...</div>}>
+        <div className="flex min-h-screen flex-col items-center justify-center p-4 bg-background">
+            <Card className="w-full max-w-md">
+                <CardHeader className="text-center space-y-2">
+                    <Link href="/" className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg hover:opacity-90 transition-opacity">
+                        <Zap size={24} />
+                    </Link>
+                    <CardTitle className="text-2xl">Sign in to CodeSwayam</CardTitle>
+                    <CardDescription>Use your central account to access all tools</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <Suspense fallback={<div className="text-center text-sm text-muted-foreground py-4">Loading...</div>}>
                         <LoginForm />
                     </Suspense>
-                    <p className="mt-8 text-center text-sm text-gray-500">
-                        Don&apos;t have an account?{' '}
-                        <Link href="/signup" className="font-semibold leading-6 text-[#00ADB5] hover:text-[#008C93]">
-                            Create a central account
+                </CardContent>
+                <CardFooter className="justify-center">
+                    <p className="text-sm text-muted-foreground">
+                        Don&apos;t have an account?{" "}
+                        <Link href="/signup" className="font-semibold text-primary hover:underline">
+                            Create one
                         </Link>
                     </p>
-                </div>
-            </div>
+                </CardFooter>
+            </Card>
         </div>
     );
 }

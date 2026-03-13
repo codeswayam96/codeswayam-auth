@@ -1,94 +1,227 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import axios from "axios";
+import { useState } from "react";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { User, Mail, Calendar, Shield, Pencil, Loader2, Trash2, AlertTriangle } from "lucide-react";
+import { toast } from "sonner";
+import { updateProfile, deleteAccount, logout } from "@/lib/api";
+import { useProfile } from "./layout";
 import { useRouter } from "next/navigation";
 
-export default function ProfilePage() {
-    const [user, setUser] = useState<any>(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState("");
-    const router = useRouter();
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+const roleColors: Record<string, string> = {
+  superadmin: "bg-violet-100 text-violet-700",
+  admin: "bg-cyan-100 text-cyan-700",
+  editor: "bg-blue-100 text-blue-700",
+  viewer: "bg-gray-100 text-gray-700",
+  subscriber: "bg-purple-100 text-purple-700",
+  user: "bg-slate-100 text-slate-700",
+};
 
-    useEffect(() => {
-        const fetchProfile = async () => {
-            try {
-                const res = await axios.get(`${apiUrl}/users/profile`, { withCredentials: true });
-                setUser(res.data);
-            } catch (err) {
-                console.error("Failed to fetch profile", err);
-                setError("Failed to load profile. Please sign in again.");
-                // router.push("/login");
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchProfile();
-    }, [apiUrl, router]);
+export default function AccountPage() {
+  const { user, setUser } = useProfile();
+  const router = useRouter();
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(user?.name || "");
+  const [saving, setSaving] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
-    if (loading) return <div className="flex justify-center items-center min-h-screen">Loading profile...</div>;
+  if (!user) return null;
 
-    if (error) return (
-        <div className="flex flex-col justify-center items-center min-h-screen space-y-4">
-            <p className="text-red-500 font-medium">{error}</p>
-            <button
-                onClick={() => router.push("/login")}
-                className="px-4 py-2 bg-[#00ADB5] text-white rounded-md shadow-sm"
-            >
-                Go to Login
-            </button>
-        </div>
-    );
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const updated = await updateProfile({ name: name.trim() });
+      setUser(updated);
+      setEditing(false);
+      toast.success("Profile updated");
+    } catch (e: any) {
+      toast.error(e.message || "Failed to update profile");
+    }
+    setSaving(false);
+  };
 
-    return (
-        <div className="max-w-4xl mx-auto py-12 px-4 sm:px-6 lg:px-8">
-            <div className="bg-white shadow overflow-hidden sm:rounded-lg border border-gray-200">
-                <div className="px-4 py-5 sm:px-6 flex justify-between items-center">
-                    <div>
-                        <h3 className="text-lg leading-6 font-medium text-gray-900">User Profile</h3>
-                        <p className="mt-1 max-w-2xl text-sm text-gray-500">Centralized account details for Code Swayam.</p>
-                    </div>
-                    <span className="h-12 w-12 rounded-full bg-[#00ADB5] text-white flex items-center justify-center font-bold text-xl uppercase">
-                        {user.name?.[0] || user.email[0]}
-                    </span>
-                </div>
-                <div className="border-t border-gray-200">
-                    <dl>
-                        <div className="bg-gray-50 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-                            <dt className="text-sm font-medium text-gray-500">Full name</dt>
-                            <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">{user.name || "N/A"}</dd>
-                        </div>
-                        <div className="bg-white px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-                            <dt className="text-sm font-medium text-gray-500">Email address</dt>
-                            <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">{user.email}</dd>
-                        </div>
-                        <div className="bg-gray-50 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-                            <dt className="text-sm font-medium text-gray-500">Role</dt>
-                            <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2 capitalize font-semibold text-[#00ADB5]">{user.role}</dd>
-                        </div>
-                        <div className="bg-white px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-                            <dt className="text-sm font-medium text-gray-500">Account Type</dt>
-                            <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2 font-mono">
-                                {user.clerkId ? "Clerk" : user.googleId ? "Google" : "Custom Login"}
-                            </dd>
-                        </div>
-                    </dl>
-                </div>
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      await deleteAccount();
+      await logout();
+      toast.success("Account deleted");
+      router.push("/login");
+    } catch (e: any) {
+      toast.error(e.message || "Failed to delete account");
+    }
+    setDeleting(false);
+  };
+
+  const accountType = user.googleId ? "Google" : user.clerkId ? "Clerk" : "Email & Password";
+  const rc = roleColors[user.role] || roleColors.user;
+
+  return (
+    <div className="space-y-6">
+      {/* Profile Card */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-start justify-between">
+            <div>
+              <CardTitle>Profile Information</CardTitle>
+              <CardDescription>Your personal details and account info</CardDescription>
             </div>
-
-            <div className="mt-8 flex justify-end">
-                <button
-                    onClick={() => {
-                        // Logout logic - clear cookie and redirect
-                        document.cookie = "Authentication=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;";
-                        router.push("/login");
-                    }}
-                    className="px-6 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-                >
-                    Sign out
-                </button>
+            {!editing && (
+              <Button variant="outline" size="sm" onClick={() => { setName(user.name || ""); setEditing(true); }}>
+                <Pencil size={14} /> Edit
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Avatar & Name */}
+          <div className="flex items-center gap-4">
+            <div className="w-16 h-16 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xl font-bold">
+              {(user.name || user.email)[0].toUpperCase()}
             </div>
-        </div>
-    );
+            <div>
+              {editing ? (
+                <div className="space-y-2">
+                  <Label htmlFor="name">Full Name</Label>
+                  <Input
+                    id="name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Your full name"
+                    className="w-64"
+                  />
+                </div>
+              ) : (
+                <>
+                  <p className="text-lg font-semibold">{user.name || "Not set"}</p>
+                  <p className="text-sm text-muted-foreground">{user.email}</p>
+                </>
+              )}
+            </div>
+          </div>
+
+          {editing && (
+            <div className="flex gap-2">
+              <Button onClick={handleSave} disabled={saving} size="sm">
+                {saving && <Loader2 size={14} className="animate-spin" />}
+                Save Changes
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setEditing(false)}>Cancel</Button>
+            </div>
+          )}
+
+          <Separator />
+
+          {/* Details Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-muted">
+                <Mail size={16} className="text-muted-foreground" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Email</p>
+                <p className="text-sm font-medium">{user.email}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-muted">
+                <Shield size={16} className="text-muted-foreground" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Role</p>
+                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${rc}`}>
+                  {user.role}
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-muted">
+                <User size={16} className="text-muted-foreground" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Account Type</p>
+                <p className="text-sm font-medium">{accountType}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-muted">
+                <Calendar size={16} className="text-muted-foreground" />
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Joined</p>
+                <p className="text-sm font-medium">
+                  {user.createdAt ? new Date(user.createdAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : "—"}
+                </p>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Account Status */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Account Status</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">Status</p>
+              <p className="text-xs text-muted-foreground">Your account is currently {user.status || "active"}</p>
+            </div>
+            <Badge variant={user.status === "active" || !user.status ? "success" : user.status === "suspended" ? "destructive" : "secondary"}>
+              {(user.status || "active").charAt(0).toUpperCase() + (user.status || "active").slice(1)}
+            </Badge>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Danger Zone */}
+      <Card className="border-destructive/30">
+        <CardHeader>
+          <CardTitle className="text-base text-destructive">Danger Zone</CardTitle>
+          <CardDescription>Irreversible actions for your account</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium">Delete Account</p>
+              <p className="text-xs text-muted-foreground">Permanently delete your account and all associated data</p>
+            </div>
+            <Button variant="destructive" size="sm" onClick={() => setDeleteOpen(true)}>
+              <Trash2 size={14} /> Delete
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle size={18} className="text-destructive" /> Delete Account
+            </DialogTitle>
+            <DialogDescription>
+              This action cannot be undone. All your data, sessions, and preferences will be permanently removed.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteOpen(false)}>Cancel</Button>
+            <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
+              {deleting && <Loader2 size={14} className="animate-spin" />}
+              Yes, Delete My Account
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
 }
