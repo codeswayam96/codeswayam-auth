@@ -75,6 +75,21 @@ export async function logout() {
     document.cookie = `Authentication=; Path=/${domainAttr}; Expires=Thu, 01 Jan 1970 00:00:01 GMT; SameSite=Lax`;
 }
 
+export interface SaasProduct {
+    id: string | number;
+    name: string;
+    description: string;
+    url: string;
+    logoUrl?: string;
+    category?: string;
+    isActive?: boolean;
+}
+
+/** Returns all active SaaS products from core-api. */
+export async function fetchSaasProducts(): Promise<SaasProduct[]> {
+    return apiFetch("/saas-products");
+}
+
 /** Returns the current user's profile, or null if not authenticated. */
 export async function getSession(): Promise<{ id: string; email: string; name: string } | null> {
     try {
