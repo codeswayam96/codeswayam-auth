@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useState, Suspense, useEffect } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { GoogleLogin } from "@react-oauth/google";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Loader2, Zap, Eye, EyeOff, AlertCircle } from "lucide-react";
+import { checkUserAuth } from "@/lib/auth-redirect";
 
 function LoginForm() {
     const [email, setEmail] = useState("");
@@ -19,13 +20,20 @@ function LoginForm() {
     const [showPassword, setShowPassword] = useState(false);
 
     const searchParams = useSearchParams();
-    const defaultRedirect =
-        process.env.NEXT_PUBLIC_DEFAULT_REDIRECT ||
-        (process.env.NODE_ENV === "production"
-            ? "https://www.codeswayam.com/dashboard"
-            : "http://localhost:3004/dashboard");
-    const redirectUrl = searchParams.get("redirect") || defaultRedirect;
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+
+    // Validate and sanitize redirect URL
+    const getValidRedirectUrl = () => {
+      const redirect = searchParams.get("redirect") || "/account";
+      // Only allow internal paths (starting with /) or configured external domains
+      if (redirect.startsWith("/")) {
+        return redirect;
+      }
+      // Block external URLs for security
+      return "/account";
+    };
+
+    const redirectUrl = getValidRedirectUrl();
 
     const handleGoogleSuccess = async (credentialResponse: any) => {
         try {
@@ -154,6 +162,27 @@ function LoginForm() {
 }
 
 export default function LoginPage() {
+    const router = useRouter();
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        const checkAuth = async () => {
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+            const isAuthenticated = await checkUserAuth(apiUrl);
+            if (isAuthenticated) {
+                router.push("/account");
+            }
+            setIsLoading(false);
+        };
+
+        checkAuth();
+    }, [router]);
+
+    // Show nothing while checking authentication
+    if (isLoading) {
+        return null;
+    }
+
     return (
         <div className="flex min-h-screen flex-col items-center justify-center p-4 bg-background">
             <Card className="w-full max-w-md">

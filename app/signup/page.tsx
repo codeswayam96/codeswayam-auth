@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useState, Suspense, useEffect } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { GoogleLogin } from "@react-oauth/google";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Loader2, Zap, Eye, EyeOff, AlertCircle } from "lucide-react";
+import { checkUserAuth } from "@/lib/auth-redirect";
 
 function SignupForm() {
     const [name, setName] = useState("");
@@ -162,6 +163,27 @@ function SignupForm() {
 }
 
 export default function SignupPage() {
+    const router = useRouter();
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        const checkAuth = async () => {
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+            const isAuthenticated = await checkUserAuth(apiUrl);
+            if (isAuthenticated) {
+                router.push("/account");
+            }
+            setIsLoading(false);
+        };
+
+        checkAuth();
+    }, [router]);
+
+    // Show nothing while checking authentication
+    if (isLoading) {
+        return null;
+    }
+
     return (
         <div className="flex min-h-screen flex-col items-center justify-center p-4 bg-background">
             <Card className="w-full max-w-md">

@@ -98,3 +98,52 @@ export async function getSession(): Promise<{ id: string; email: string; name: s
         return null;
     }
 }
+
+export interface Subscription {
+    id: string | number;
+    userId: string | number;
+    productId: string | number;
+    productName: string;
+    plan: string;
+    status: "active" | "inactive" | "cancelled";
+    price: number;
+    currency: string;
+    startDate: string;
+    endDate?: string;
+    autoRenew: boolean;
+    createdAt: string;
+}
+
+/** Fetch all subscriptions for the current user */
+export async function fetchUserSubscriptions(): Promise<Subscription[]> {
+    return apiFetch("/subscriptions");
+}
+
+/** Create a new subscription for a product */
+export async function createSubscription(data: {
+    productId: string | number;
+    plan: string;
+}) {
+    return apiFetch("/subscriptions", {
+        method: "POST",
+        body: JSON.stringify(data),
+    });
+}
+
+/** Update subscription status */
+export async function updateSubscription(subscriptionId: string | number, data: {
+    status?: string;
+    autoRenew?: boolean;
+}) {
+    return apiFetch(`/subscriptions/${subscriptionId}`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+    });
+}
+
+/** Cancel a subscription */
+export async function cancelSubscription(subscriptionId: string | number) {
+    return apiFetch(`/subscriptions/${subscriptionId}/cancel`, {
+        method: "POST",
+    });
+}

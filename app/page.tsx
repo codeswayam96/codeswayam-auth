@@ -1,3 +1,7 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
     Zap,
@@ -20,6 +24,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import Navbar from "@/components/navbar";
 import Footer from "@/components/footer";
+import { checkUserAuth } from "@/lib/auth-redirect";
 
 // ─── Data ───────────────────────────────────────────────────────────────────
 
@@ -111,6 +116,27 @@ const stats = [
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function HomePage() {
+    const router = useRouter();
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        const checkAuth = async () => {
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+            const isAuthenticated = await checkUserAuth(apiUrl);
+            if (isAuthenticated) {
+                router.push("/account");
+            }
+            setIsLoading(false);
+        };
+
+        checkAuth();
+    }, [router]);
+
+    // Show nothing while checking authentication
+    if (isLoading) {
+        return null;
+    }
+
     return (
         <div className="flex flex-col min-h-screen">
             <Navbar />
