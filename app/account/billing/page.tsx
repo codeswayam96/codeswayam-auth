@@ -1,8 +1,6 @@
 "use client";
 
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, Button, Badge } from "@codeswayam/ui";
 import { Separator } from "@/components/ui/separator";
 import { CreditCard, DollarSign, Download, Plus, TrendingUp } from "lucide-react";
 import Link from "next/link";

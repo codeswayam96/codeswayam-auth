@@ -1,10 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, Button, Label, Badge } from "@codeswayam/ui";
 import { Switch } from "@/components/ui/switch";
 import { Bell, Globe, Palette, Download, Loader2, CheckCircle } from "lucide-react";
 import { toast } from "sonner";

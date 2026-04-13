@@ -1,7 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const PROTECTED_ROUTES = ["/profile"];
+const PROTECTED_ROUTES = ["/profile", "/account"];
 const AUTH_ROUTES = ["/login", "/signup", "/forgot-password", "/reset-password"];
+
+const ALLOWED_DOMAINS = ["localhost", "codeswayam.com"];
+
+function isAllowedRedirect(url: string): boolean {
+    if (url.startsWith("/")) return true;
+    try {
+        const parsed = new URL(url);
+        return ALLOWED_DOMAINS.some(
+            (d) => parsed.hostname === d || parsed.hostname.endsWith("." + d)
+        );
+    } catch {
+        return false;
+    }
+}
 
 export function middleware(req: NextRequest) {
     const { pathname } = req.nextUrl;
@@ -9,7 +23,9 @@ export function middleware(req: NextRequest) {
     const isProtected = PROTECTED_ROUTES.some((r) => pathname.startsWith(r));
     const isAuthRoute = AUTH_ROUTES.some((r) => pathname.startsWith(r));
 
-    // Check for the auth cookie (set by core-api as HttpOnly)
+    // ONLY check the custom Authentication cookie — we no longer trust __session
+    // because that's a Clerk cookie that may be stale or belong to a different
+    // session after the user switches auth modes.
     const authCookie = req.cookies.get("Authentication");
     const isAuthenticated = Boolean(authCookie?.value);
 
@@ -19,7 +35,13 @@ export function middleware(req: NextRequest) {
         return NextResponse.redirect(loginUrl);
     }
 
+    // If user is already authenticated and visits an auth route,
+    // honor the ?redirect param (e.g. from admin-panel or auraflow)
     if (isAuthRoute && isAuthenticated) {
+        const redirectParam = req.nextUrl.searchParams.get("redirect");
+        if (redirectParam && isAllowedRedirect(redirectParam)) {
+            return NextResponse.redirect(new URL(redirectParam));
+        }
         const defaultRedirect =
             process.env.NEXT_PUBLIC_DEFAULT_REDIRECT ||
             (process.env.NODE_ENV === "production"
@@ -32,5 +54,5 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-    matcher: ["/profile/:path*", "/login", "/signup", "/forgot-password", "/reset-password"],
+    matcher: ["/profile/:path*", "/account/:path*", "/login", "/signup", "/forgot-password", "/reset-password"],
 };

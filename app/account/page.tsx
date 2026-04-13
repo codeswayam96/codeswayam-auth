@@ -1,13 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, Button, Badge } from "@codeswayam/ui";
 import { Separator } from "@/components/ui/separator";
 import { useAccount } from "./layout";
 import Link from "next/link";
 import { User, CreditCard, Settings, ArrowRight, Zap, AlertCircle, Loader2, TrendingUp, Clock, ShoppingCart } from "lucide-react";
+import { fetchUserSubscriptions } from "@codeswayam/api-client";
 
 interface SaaSProduct {
   id: string;
@@ -28,16 +27,8 @@ export default function AccountPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Fetch user's subscribed products
-        const res = await fetch(`${apiUrl}/subscriptions`, {
-          credentials: "include",
-        });
-
-        if (!res.ok) {
-          throw new Error("Failed to fetch subscriptions");
-        }
-
-        const data = await res.json();
+        // Fetch user's subscribed products using the shared API client
+        const data: any = await fetchUserSubscriptions();
         const subs = data.subscriptions || data;
 
         // Transform subscriptions to products view

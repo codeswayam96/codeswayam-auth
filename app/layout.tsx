@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import { GoogleOAuthProvider } from "@react-oauth/google";
 import { Toaster } from "sonner";
+import { Providers } from "@/components/providers";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -18,13 +18,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <GoogleOAuthProvider clientId={process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || ""}>
-      <html lang="en">
-        <body className={`${inter.className} bg-background min-h-screen`}>
+    <html lang="en">
+      <body className={`${inter.className} bg-background min-h-screen`}>
+        <Providers>
           {children}
-          <Toaster richColors position="top-right" />
-        </body>
-      </html>
-    </GoogleOAuthProvider>
+        </Providers>
+        <Toaster richColors position="top-right" />
+      </body>
+    </html>
   );
 }

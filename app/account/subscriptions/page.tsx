@@ -1,13 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, Button, Badge } from "@codeswayam/ui";
 import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { CreditCard, Calendar, DollarSign, AlertCircle, Trash2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { fetchUserSubscriptions, cancelSubscription } from "@codeswayam/api-client";
 import { useAccount } from "../layout";
 
 interface Subscription {
@@ -37,15 +36,7 @@ export default function SubscriptionsPage() {
   useEffect(() => {
     const fetchSubscriptions = async () => {
       try {
-        const res = await fetch(`${apiUrl}/subscriptions`, {
-          credentials: "include",
-        });
-
-        if (!res.ok) {
-          throw new Error("Failed to fetch subscriptions");
-        }
-
-        const data = await res.json();
+        const data: any = await fetchUserSubscriptions();
         setSubscriptions(data.subscriptions || data);
       } catch (err: any) {
         setError(err.message || "Failed to load subscriptions");
@@ -60,14 +51,7 @@ export default function SubscriptionsPage() {
   const handleCancelSubscription = async (subscriptionId: string) => {
     setCancelling(subscriptionId);
     try {
-      const res = await fetch(`${apiUrl}/subscriptions/${subscriptionId}/cancel`, {
-        method: "POST",
-        credentials: "include",
-      });
-
-      if (!res.ok) {
-        throw new Error("Failed to cancel subscription");
-      }
+      await cancelSubscription(subscriptionId);
 
       setSubscriptions(subscriptions.filter(s => s.id !== subscriptionId));
       toast.success("Subscription cancelled successfully");

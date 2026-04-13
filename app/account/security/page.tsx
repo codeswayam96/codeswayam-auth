@@ -1,17 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter, Button, Input, Label, Badge } from "@codeswayam/ui";
 import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Shield, Lock, Eye, EyeOff, Loader2, Key, Smartphone, LogOut, AlertCircle, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
 import { useAccount } from "../layout";
+import { useAuthMode } from "@/lib/auth-mode";
 
 interface Session {
   id: string;
@@ -24,6 +21,7 @@ interface Session {
 
 export default function SecurityPage() {
   const { user } = useAccount();
+  const { authMode } = useAuthMode();
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -126,7 +124,8 @@ export default function SecurityPage() {
 
   return (
     <div className="space-y-6">
-      {/* Password Management */}
+      {/* Password Management - Hidden in Clerk mode */}
+      {true && (
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -207,6 +206,7 @@ export default function SecurityPage() {
           </form>
         </CardContent>
       </Card>
+      )}
 
       {/* Two-Factor Authentication */}
       <Card>
