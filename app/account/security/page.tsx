@@ -1,7 +1,11 @@
 "use client";
 
-import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter, Button, Input, Label, Badge } from "@codeswayam/ui";
+import { useState, useEffect } from "react";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Shield, Lock, Eye, EyeOff, Loader2, Key, Smartphone, LogOut, AlertCircle, CheckCircle } from "lucide-react";
@@ -9,11 +13,22 @@ import { toast } from "sonner";
 import Link from "next/link";
 import { useAccount } from "../layout";
 import { useAuthMode } from "@/lib/auth-mode";
+import {
+  changePassword,
+  fetchSessions,
+  revokeSession,
+  revokeAllSessions,
+  generate2FA,
+  enable2FA,
+  disable2FA,
+  deleteAccount
+} from "@/lib/api";
 
 interface Session {
   id: string;
   device: string;
   location: string;
+  userAgent: string | null;
   ipAddress: string;
   lastActive: string;
   createdAt: string;
@@ -31,24 +46,82 @@ export default function SecurityPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [changingPassword, setChangingPassword] = useState(false);
 
-  const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
-  const [showingTwoFactorSetup, setShowingTwoFactorSetup] = useState(false);
+  const [twoFactorEnabled, setTwoFactorEnabled] = useState(user?.twoFactorEnabled || false);
 
-  const [sessions, setSessions] = useState<Session[]>([
-    {
-      id: "1",
-      device: "Chrome on Windows",
-      location: "San Francisco, CA",
-      ipAddress: "192.168.1.1",
-      lastActive: new Date().toISOString(),
-      createdAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-    },
-  ]);
+  useEffect(() => {
+    if (user) {
+      setTwoFactorEnabled(user.twoFactorEnabled);
+    }
+  }, [user]);
+  const [showingTwoFactorSetup, setShowingTwoFactorSetup] = useState(false);
+  const [qrCode, setQrCode] = useState("");
+  const [setupSecret, setSetupSecret] = useState("");
+  const [setupToken, setSetupToken] = useState("");
+  const [setupLoading, setSetupLoading] = useState(false);
+
+  const start2FASetup = async () => {
+    setSetupLoading(true);
+    try {
+      const data = await generate2FA();
+      setQrCode(data.qrCodeDataUrl);
+      setSetupSecret(data.secret);
+      setShowingTwoFactorSetup(true);
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setSetupLoading(false);
+    }
+  };
+
+  const verifyAndEnable2FA = async () => {
+    setSetupLoading(true);
+    try {
+      await enable2FA(setupSecret, setupToken);
+      setTwoFactorEnabled(true);
+      setShowingTwoFactorSetup(false);
+      setSetupToken("");
+      toast.success("Two-factor authentication enabled successfully");
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setSetupLoading(false);
+    }
+  };
+
+  const handleDisable2FA = async () => {
+    setSetupLoading(true);
+    try {
+      await disable2FA();
+      setTwoFactorEnabled(false);
+      toast.success("Two-factor authentication disabled");
+    } catch (err: any) {
+      toast.error(err.message);
+    } finally {
+      setSetupLoading(false);
+    }
+  };
+
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [loadingSessions, setLoadingSessions] = useState(true);
+
+  const loadSessions = async () => {
+    setLoadingSessions(true);
+    try {
+      const data = await fetchSessions();
+      setSessions(data);
+    } catch (err) {
+      console.error("Failed to fetch sessions", err);
+    } finally {
+      setLoadingSessions(false);
+    }
+  };
+
+  useEffect(() => {
+    loadSessions();
+  }, []);
 
   const [revokeOpen, setRevokeOpen] = useState<string | null>(null);
   const [revoking, setRevoking] = useState<string | null>(null);
-
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,21 +138,7 @@ export default function SecurityPage() {
 
     setChangingPassword(true);
     try {
-      const res = await fetch(`${apiUrl}/users/change-password`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          currentPassword,
-          newPassword,
-        }),
-        credentials: "include",
-      });
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.message || "Failed to change password");
-      }
-
+      await changePassword(currentPassword, newPassword);
       toast.success("Password changed successfully");
       setCurrentPassword("");
       setNewPassword("");
@@ -91,11 +150,28 @@ export default function SecurityPage() {
     }
   };
 
+  const parseUserAgent = (ua: string | null) => {
+    if (!ua) return "Unknown Device";
+    if (ua.includes("Windows")) {
+        if (ua.includes("Chrome")) return "Chrome on Windows";
+        if (ua.includes("Firefox")) return "Firefox on Windows";
+        if (ua.includes("Edg")) return "Edge on Windows";
+        return "Windows Device";
+    }
+    if (ua.includes("Macintosh")) {
+        if (ua.includes("Chrome")) return "Chrome on macOS";
+        if (ua.includes("Safari") && !ua.includes("Chrome")) return "Safari on macOS";
+        return "macOS Device";
+    }
+    if (ua.includes("iPhone") || ua.includes("iPad")) return "iOS Device";
+    if (ua.includes("Android")) return "Android Device";
+    return ua.split(" ")[0] || "Unknown Device";
+  };
+
   const handleRevokeSession = async (sessionId: string) => {
     setRevoking(sessionId);
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await revokeSession(sessionId);
       setSessions(sessions.filter(s => s.id !== sessionId));
       toast.success("Session revoked successfully");
       setRevokeOpen(null);
@@ -109,10 +185,10 @@ export default function SecurityPage() {
   const handleRevokeAllSessions = async () => {
     setRevoking("all");
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await revokeAllSessions();
       setSessions([]);
       toast.success("All sessions revoked successfully");
+      window.location.reload(); // Since we revoked our own session too
     } catch (err: any) {
       toast.error(err.message || "Failed to revoke sessions");
     } finally {
@@ -120,93 +196,132 @@ export default function SecurityPage() {
     }
   };
 
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDeleteAccount = async () => {
+    setDeleting(true);
+    try {
+      await deleteAccount();
+      toast.success("Account deletion request submitted for admin approval");
+      setDeleteOpen(false);
+      // Optional: Redirect or show a specific state
+    } catch (err: any) {
+      toast.error(err.message || "Failed to request account deletion");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   if (!user) return null;
 
   return (
     <div className="space-y-6">
-      {/* Password Management - Hidden in Clerk mode */}
-      {true && (
+      {/* Password Management - Hidden for Google Auth users */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Lock size={18} className="text-primary" />
             Change Password
           </CardTitle>
-          <CardDescription>Update your password to secure your account</CardDescription>
+          <CardDescription>
+            {user.googleId 
+              ? "Your security is managed by Google" 
+              : "Update your password to secure your account"}
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleChangePassword} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="current-password">Current Password</Label>
-              <div className="relative">
-                <Input
-                  id="current-password"
-                  type={showCurrentPassword ? "text" : "password"}
-                  value={currentPassword}
-                  onChange={(e) => setCurrentPassword(e.target.value)}
-                  placeholder="Enter current password"
-                  required
-                />
-                <button
-                  type="button"
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                  onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-                >
-                  {showCurrentPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
+          {user.googleId ? (
+            <div className="flex flex-col items-center justify-center py-6 text-center space-y-4">
+              <div className="p-3 bg-blue-50 rounded-full">
+                <Shield size={32} className="text-blue-600" />
               </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="new-password">New Password</Label>
-              <div className="relative">
-                <Input
-                  id="new-password"
-                  type={showNewPassword ? "text" : "password"}
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="Enter new password (min 8 characters)"
-                  required
-                />
-                <button
-                  type="button"
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                  onClick={() => setShowNewPassword(!showNewPassword)}
-                >
-                  {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
+              <div className="max-w-sm space-y-2">
+                <p className="text-sm font-medium">You are signed in with Google</p>
+                <p className="text-xs text-muted-foreground">
+                  Since you use Google to sign in, you don't have a separate password for CodeSwayam. 
+                  To manage your account security, please visit your Google Account settings.
+                </p>
               </div>
+              <Button variant="outline" asChild>
+                <a href="https://myaccount.google.com/security" target="_blank" rel="noreferrer">
+                  Manage Google Security
+                </a>
+              </Button>
             </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="confirm-password">Confirm Password</Label>
-              <div className="relative">
-                <Input
-                  id="confirm-password"
-                  type={showConfirmPassword ? "text" : "password"}
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Confirm new password"
-                  required
-                />
-                <button
-                  type="button"
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                >
-                  {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
+          ) : (
+            <form onSubmit={handleChangePassword} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="current-password">Current Password</Label>
+                <div className="relative">
+                  <Input
+                    id="current-password"
+                    type={showCurrentPassword ? "text" : "password"}
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    placeholder="Enter current password"
+                    required
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                  >
+                    {showCurrentPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
               </div>
-            </div>
 
-            <Button type="submit" disabled={changingPassword}>
-              {changingPassword && <Loader2 size={14} className="animate-spin mr-2" />}
-              Update Password
-            </Button>
-          </form>
+              <div className="space-y-2">
+                <Label htmlFor="new-password">New Password</Label>
+                <div className="relative">
+                  <Input
+                    id="new-password"
+                    type={showNewPassword ? "text" : "password"}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Enter new password (min 8 characters)"
+                    required
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    onClick={() => setShowNewPassword(!showNewPassword)}
+                  >
+                    {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="confirm-password">Confirm Password</Label>
+                <div className="relative">
+                  <Input
+                    id="confirm-password"
+                    type={showConfirmPassword ? "text" : "password"}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Confirm new password"
+                    required
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  >
+                    {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+              </div>
+
+              <Button type="submit" disabled={changingPassword}>
+                {changingPassword && <Loader2 size={14} className="animate-spin mr-2" />}
+                Update Password
+              </Button>
+            </form>
+          )}
         </CardContent>
       </Card>
-      )}
 
       {/* Two-Factor Authentication */}
       <Card>
@@ -239,9 +354,11 @@ export default function SecurityPage() {
               </div>
               <Button
                 variant={twoFactorEnabled ? "outline" : "default"}
-                onClick={() => setShowingTwoFactorSetup(true)}
+                onClick={twoFactorEnabled ? handleDisable2FA : start2FASetup}
+                disabled={setupLoading}
               >
-                {twoFactorEnabled ? "Manage" : "Enable"}
+                {setupLoading && <Loader2 size={14} className="animate-spin mr-2" />}
+                {twoFactorEnabled ? "Disable" : "Enable"}
               </Button>
             </div>
           </div>
@@ -273,23 +390,29 @@ export default function SecurityPage() {
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
-          {sessions.length > 0 ? (
+          {loadingSessions ? (
+            <div className="flex flex-col items-center justify-center py-8 space-y-3">
+              <Loader2 className="animate-spin text-primary" size={24} />
+              <p className="text-sm text-muted-foreground">Loading active sessions...</p>
+            </div>
+          ) : sessions.length > 0 ? (
             sessions.map((session, idx) => (
               <div
                 key={session.id}
                 className="flex items-start justify-between p-4 border rounded-lg hover:bg-muted/30 transition-colors"
               >
                 <div className="space-y-1">
-                  <p className="font-medium">{session.device}</p>
+                  <p className="font-medium">{parseUserAgent(session?.userAgent)}</p>
                   <p className="text-xs text-muted-foreground">
-                    {session.location} • IP: {session.ipAddress}
+                     IP: {session.ipAddress || "Unknown"}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Last active: {new Date(session.lastActive).toLocaleString()}
+                    Started: {new Date(session.createdAt).toLocaleString()}
                   </p>
-                  {idx === 0 && <Badge className="mt-2">Current</Badge>}
+                  {/* Current session logic: comparing tokens would be best, but we'll show first as current for now */}
+                  {idx === sessions.length - 1 && <Badge className="mt-2">Current</Badge>}
                 </div>
-                {idx !== 0 && (
+                {idx !== sessions.length - 1 && (
                   <Button
                     variant="outline"
                     size="sm"
@@ -325,22 +448,69 @@ export default function SecurityPage() {
               <Badge className="bg-green-100 text-green-800">Connected</Badge>
             </div>
           )}
-          {user.clerkId && (
-            <div className="flex items-center justify-between p-4 border rounded-lg">
-              <div>
-                <p className="font-medium">Clerk Account</p>
-                <p className="text-xs text-muted-foreground">Connected and active</p>
-              </div>
-              <Badge className="bg-green-100 text-green-800">Connected</Badge>
-            </div>
-          )}
-          {!user.googleId && !user.clerkId && (
+          {!user.googleId && (
             <p className="text-sm text-muted-foreground text-center py-4">
               No additional accounts connected
             </p>
           )}
         </CardContent>
       </Card>
+
+      {/* Danger Zone */}
+      <Card className="border-red-200 bg-red-50/30">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-red-600">
+            <AlertCircle size={18} />
+            Danger Zone
+          </CardTitle>
+          <CardDescription>
+            Irreversible actions for your account
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between p-4 border border-red-100 rounded-lg bg-white">
+            <div className="space-y-0.5">
+              <p className="font-medium text-gray-900">Delete Account</p>
+              <p className="text-xs text-muted-foreground">
+                Permanently remove your account and all associated data. This requires admin approval.
+              </p>
+            </div>
+            <Button 
+              variant="destructive" 
+              size="sm"
+              onClick={() => setDeleteOpen(true)}
+              disabled={user.status === 'pending_deletion'}
+            >
+              {user.status === 'pending_deletion' ? "Deletion Pending" : "Delete Account"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Account Deletion Dialog */}
+      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Are you absolutely sure?</DialogTitle>
+            <DialogDescription>
+              This action will submit a request to delete your account. Once an administrator approves it, all your data will be permanently removed. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteAccount}
+              disabled={deleting}
+            >
+              {deleting && <Loader2 size={14} className="animate-spin mr-1" />}
+              Request Account Deletion
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Revoke Session Dialog */}
       <Dialog open={!!revokeOpen} onOpenChange={() => setRevokeOpen(null)}>
@@ -382,17 +552,23 @@ export default function SecurityPage() {
                 Scan this QR code with an authenticator app (Google Authenticator, Authy, Microsoft Authenticator, etc.)
               </p>
               <div className="bg-white p-4 rounded inline-block">
-                <div className="w-40 h-40 bg-muted flex items-center justify-center rounded">
-                  <span className="text-xs text-muted-foreground">QR Code Placeholder</span>
-                </div>
+                {qrCode ? (
+                  <img src={qrCode} alt="2FA QR Code" className="w-40 h-40" />
+                ) : (
+                  <div className="w-40 h-40 bg-muted flex items-center justify-center rounded">
+                    <Loader2 size={24} className="animate-spin text-muted-foreground" />
+                  </div>
+                )}
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="backup-code">Enter verification code</Label>
+              <Label htmlFor="verification-code">Enter verification code</Label>
               <Input
-                id="backup-code"
+                id="verification-code"
                 placeholder="000000"
                 maxLength={6}
+                value={setupToken}
+                onChange={(e) => setSetupToken(e.target.value)}
               />
             </div>
           </div>
@@ -400,12 +576,9 @@ export default function SecurityPage() {
             <Button variant="outline" onClick={() => setShowingTwoFactorSetup(false)}>
               Cancel
             </Button>
-            <Button onClick={() => {
-              setTwoFactorEnabled(true);
-              setShowingTwoFactorSetup(false);
-              toast.success("Two-factor authentication enabled");
-            }}>
-              Enable 2FA
+            <Button onClick={verifyAndEnable2FA} disabled={setupLoading || setupToken.length !== 6}>
+              {setupLoading && <Loader2 size={14} className="animate-spin mr-2" />}
+              Verify & Enable
             </Button>
           </DialogFooter>
         </DialogContent>

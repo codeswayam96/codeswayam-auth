@@ -31,20 +31,28 @@ export function invalidateAuthModeCache() {
 
 async function fetchAuthMode(): Promise<AuthMode> {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
-    try {
-        const res = await fetch(`${apiUrl}/auth/settings`, {
-            credentials: "include",
-            cache: "no-store",
-        });
-        if (!res.ok) throw new Error("Failed to fetch auth settings");
-        const data = await res.json();
-        // authType from server is "both" | "custom" | "clerk"
-        // We treat everything that is NOT "custom" as "both" (Clerk-assisted mode)
-        return data?.authType === "both" ? "both" : "custom";
-    } catch {
-        // Preserve stale cache on error rather than defaulting to wrong mode
-        return cachedMode ?? "custom";
-    }
+
+    // Race the fetch against a 3-second timeout so the login page
+    // never spins indefinitely when the DB (Supabase) is waking up.
+    const timeout = new Promise<AuthMode>((resolve) =>
+        setTimeout(() => resolve(cachedMode ?? "custom"), 3000)
+    );
+
+    const fetcher = async (): Promise<AuthMode> => {
+        try {
+            const res = await fetch(`${apiUrl}/auth/settings`, {
+                credentials: "include",
+                cache: "no-store",
+            });
+            if (!res.ok) throw new Error("Failed to fetch auth settings");
+            const data = await res.json();
+            return data?.authType === "both" ? "both" : "custom";
+        } catch {
+            return cachedMode ?? "custom";
+        }
+    };
+
+    return Promise.race([fetcher(), timeout]);
 }
 
 export function AuthModeProvider({ children }: { children: ReactNode }) {

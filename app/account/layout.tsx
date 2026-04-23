@@ -3,7 +3,7 @@
 import { useState, useEffect, createContext, useContext } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Home, User, CreditCard, Settings, LogOut, Zap, Loader2, Shield, DollarSign } from "lucide-react";
+import { Home, User, CreditCard, Settings, LogOut, Zap, Loader2, Shield, DollarSign, LayoutDashboard, Coins, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { fetchProfile, logout } from "@/lib/api";
 import { useAuthMode } from "@/lib/auth-mode";
@@ -15,9 +15,10 @@ interface UserProfile {
   email: string;
   role: string;
   status: string;
-  clerkId: string | null;
   googleId: string | null;
   lastActiveAt: string | null;
+  twoFactorEnabled: boolean;
+  rejectionReason?: string | null;
   createdAt: string;
 }
 
@@ -32,13 +33,25 @@ export function useAccount() {
 }
 
 const navItems = [
+  { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
   { href: "/account", icon: Home, label: "Overview" },
   { href: "/account/profile", icon: User, label: "Profile" },
   { href: "/account/subscriptions", icon: CreditCard, label: "Subscriptions" },
   { href: "/account/security", icon: Shield, label: "Security" },
   { href: "/account/billing", icon: DollarSign, label: "Billing" },
+  { href: "/account/credits", icon: Coins, label: "Credits" },
+  { href: "/account/referrals", icon: Users, label: "Referrals" },
   { href: "/account/preferences", icon: Settings, label: "Preferences" },
 ];
+
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 export default function AccountLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -53,7 +66,7 @@ export default function AccountLayout({ children }: { children: React.ReactNode 
 
     const timer = setTimeout(() => {
       fetchProfile()
-        .then(setUser)
+        .then((res) => setUser(res?.data ?? res))
         .catch(() => {
           router.push("/login");
         })
@@ -84,32 +97,61 @@ export default function AccountLayout({ children }: { children: React.ReactNode 
     <AccountContext.Provider value={{ user, setUser, loading }}>
       <div className="min-h-screen bg-muted/30">
         {/* Top navbar */}
-        <header className="sticky top-0 z-30 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-          <div className="max-w-7xl mx-auto flex h-14 items-center px-6">
+        <header className="sticky top-0 z-30 border-b bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/60 shadow-sm">
+          <div className="max-w-7xl mx-auto flex h-16 items-center px-6">
             <Link href="/dashboard" className="flex items-center gap-2 mr-auto hover:opacity-80 transition-opacity">
-              <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center">
-                <Zap size={14} className="text-primary-foreground" />
+              <div className="w-8 h-8 rounded-xl bg-primary flex items-center justify-center shadow-lg shadow-primary/20">
+                <Zap size={16} className="text-primary-foreground fill-current" />
               </div>
-              <span className="font-bold text-sm">CodeSwayam</span>
+              <span className="font-bold text-base tracking-tight">CodeSwayam</span>
             </Link>
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold">
-                {initials}
-              </div>
-              <span className="text-sm font-medium hidden sm:block">{displayName}</span>
+            
+            <div className="flex items-center gap-4">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="flex items-center gap-2.5 hover:bg-accent/50 p-1.5 rounded-xl transition-all border border-transparent hover:border-border outline-none">
+                    <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center text-xs font-bold ring-2 ring-background">
+                      {initials}
+                    </div>
+                    <div className="hidden sm:block text-left">
+                      <p className="text-xs font-semibold leading-none">{displayName}</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">{user?.email}</p>
+                    </div>
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56 mt-2 rounded-xl shadow-xl border-border/50">
+                  <DropdownMenuLabel className="font-normal">
+                    <div className="flex flex-col space-y-1">
+                      <p className="text-sm font-medium leading-none">{displayName}</p>
+                      <p className="text-xs leading-none text-muted-foreground">{user?.email}</p>
+                    </div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild className="cursor-pointer rounded-lg py-2">
+                    <Link href="/account/profile" className="flex items-center gap-2"><User size={14} /> Profile Settings</Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild className="cursor-pointer rounded-lg py-2">
+                    <Link href="/account/security" className="flex items-center gap-2"><Shield size={14} /> Security</Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive cursor-pointer rounded-lg py-2">
+                    <LogOut size={14} className="mr-2" /> Sign Out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
         </header>
 
-        <div className="max-w-7xl mx-auto px-6 py-8">
-          <div className="mb-8">
-            <h1 className="text-2xl font-bold tracking-tight">My Account</h1>
-            <p className="text-muted-foreground mt-1">Manage your profile, subscriptions, and account settings</p>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
+          <div className="mb-6">
+            <h1 className="text-xl font-bold tracking-tight">My Account</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">Manage your profile, subscriptions, and account settings</p>
           </div>
 
-          <div className="flex flex-col md:flex-row gap-8">
+          <div className="flex flex-col md:flex-row gap-6">
             {/* Sidebar nav */}
-            <nav className="w-full md:w-56 shrink-0 space-y-1">
+            <nav className="shrink-0 space-y-0.5" style={{ width: "220px", maxWidth: "100%" }}>
               {navItems.map((item) => {
                 const active = pathname === item.href;
                 return (
@@ -138,7 +180,7 @@ export default function AccountLayout({ children }: { children: React.ReactNode 
             </nav>
 
             {/* Main content */}
-            <main className="flex-1 min-w-0">
+            <main className="flex-1" style={{ minWidth: 0, width: "100%" }}>
               {children}
             </main>
           </div>

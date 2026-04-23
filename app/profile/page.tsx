@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,11 +8,13 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { User, Mail, Calendar, Shield, Pencil, Loader2, Trash2, AlertTriangle } from "lucide-react";
+import { User, Mail, Calendar, Shield, Pencil, Loader2, Trash2, AlertTriangle, Zap, ExternalLink, Crown } from "lucide-react";
 import { toast } from "sonner";
-import { updateProfile, deleteAccount, logout } from "@/lib/api";
+import { updateProfile, deleteAccount, logout, fetchUserSubscriptions } from "@/lib/api";
 import { useProfile } from "./layout";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
+import type { UserSubscription } from "@/lib/api";
 
 const roleColors: Record<string, string> = {
   superadmin: "bg-violet-100 text-violet-700",
@@ -31,6 +33,15 @@ export default function AccountPage() {
   const [saving, setSaving] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [subscriptions, setSubscriptions] = useState<UserSubscription[]>([]);
+  const [subsLoaded, setSubsLoaded] = useState(false);
+
+  useEffect(() => {
+    fetchUserSubscriptions()
+      .then(setSubscriptions)
+      .catch(() => {})
+      .finally(() => setSubsLoaded(true));
+  }, []);
 
   if (!user) return null;
 
@@ -60,7 +71,7 @@ export default function AccountPage() {
     setDeleting(false);
   };
 
-  const accountType = user.googleId ? "Google" : user.clerkId ? "Clerk" : "Email & Password";
+  const accountType = user.googleId ? "Google" : "Email & Password";
   const rc = roleColors[user.role] || roleColors.user;
 
   return (
@@ -180,6 +191,64 @@ export default function AccountPage() {
               {(user.status || "active").charAt(0).toUpperCase() + (user.status || "active").slice(1)}
             </Badge>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Connected Apps / Subscriptions */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Crown size={15} className="text-primary" /> Connected Apps
+              </CardTitle>
+              <CardDescription>Products you have access to</CardDescription>
+            </div>
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/profile/subscription">Manage Plans</Link>
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {!subsLoaded ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 size={14} className="animate-spin" /> Loading subscriptions...
+            </div>
+          ) : subscriptions.length === 0 ? (
+            <div className="text-center py-6">
+              <Zap size={28} className="mx-auto text-muted-foreground/30 mb-3" />
+              <p className="text-sm text-muted-foreground">No active subscriptions</p>
+              <Button size="sm" variant="outline" className="mt-3" asChild>
+                <Link href="/profile/subscription">Browse Plans</Link>
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {subscriptions.map(sub => (
+                <div key={sub.id} className="flex items-center justify-between p-3 rounded-lg border bg-muted/20">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <Zap size={14} className="text-primary" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium">{sub.productName || sub.bundleName || "Plan"}</p>
+                      <p className="text-[11px] text-muted-foreground capitalize">{sub.billingCycle} · {sub.status}</p>
+                    </div>
+                  </div>
+                  {sub.productDomain && (
+                    <a
+                      href={`https://${sub.productDomain}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-primary hover:underline flex items-center gap-1"
+                    >
+                      Open <ExternalLink size={11} />
+                    </a>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
 

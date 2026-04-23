@@ -196,6 +196,7 @@ function SignupForm({
     const [name, setName] = useState("");
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
+    const [referralCode, setReferralCode] = useState("");
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
@@ -234,7 +235,7 @@ function SignupForm({
             const res = await fetch(`${API_URL}/auth/signup`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ name, email, password }),
+                body: JSON.stringify({ name, email, password, referralCode: referralCode || undefined }),
                 credentials: "include",
             });
 
@@ -325,6 +326,18 @@ function SignupForm({
                     </div>
                 </div>
 
+                <div className="space-y-2">
+                    <Label htmlFor="referralCode">Referral Code (Optional)</Label>
+                    <Input
+                        id="referralCode"
+                        type="text"
+                        autoComplete="off"
+                        value={referralCode}
+                        onChange={(e) => setReferralCode(e.target.value)}
+                        placeholder="Got a referral code?"
+                    />
+                </div>
+
                 {authMode === "both" && (
                     <p className="text-xs text-muted-foreground bg-muted/40 rounded-lg px-3 py-2">
                         📧 We&apos;ll send a verification email after you create your account.
@@ -383,16 +396,19 @@ function SignupPageInner() {
             process.env.NEXT_PUBLIC_DEFAULT_REDIRECT ||
             (process.env.NODE_ENV === "production"
                 ? "https://www.codeswayam.com/dashboard"
-                : "http://localhost:3004/dashboard");
-        const raw = searchParams.get("redirect") || defaultRedirect;
-        return isAllowedRedirect(raw) ? raw : "/account";
+                : "http://localhost:3003/dashboard");
+        const raw = searchParams.get("redirect") || searchParams.get("redirect_url") || defaultRedirect;
+        return isAllowedRedirect(raw) ? raw : "/dashboard";
     }, [searchParams]);
 
     useEffect(() => {
         if (authMode === null) return;
 
         const checkAuth = async () => {
-            const isAuthenticated = await checkUserAuth(API_URL);
+            const timeoutPromise = new Promise<boolean>((resolve) =>
+                setTimeout(() => resolve(false), 4000)
+            );
+            const isAuthenticated = await Promise.race([checkUserAuth(API_URL), timeoutPromise]);
             if (isAuthenticated) {
                 window.location.href = getRedirectUrl();
                 return;

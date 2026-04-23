@@ -25,14 +25,18 @@ export function isAllowedRedirect(url: string): boolean {
 }
 
 /**
- * Utility to check if user is authenticated
+ * Utility to check if user is authenticated.
+ * Hits GET /auth/check which always returns 200 { authenticated: bool }
+ * — never throws 401 so the API logs stay clean.
  */
 export async function checkUserAuth(apiUrl: string): Promise<boolean> {
   try {
-    const response = await fetch(`${apiUrl}/users/profile`, {
+    const response = await fetch(`${apiUrl}/auth/check`, {
       credentials: "include",
     });
-    return response.ok;
+    if (!response.ok) return false;
+    const data = await response.json().catch(() => ({}));
+    return data.authenticated === true;
   } catch {
     return false;
   }

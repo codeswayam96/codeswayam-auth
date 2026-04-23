@@ -1,23 +1,175 @@
 "use client";
 
-import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter, Button, Input, Label, Badge } from "@codeswayam/ui";
+import { useEffect, useState } from "react";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { User, Mail, Calendar, Shield, Pencil, Loader2, Trash2, AlertTriangle } from "lucide-react";
+import {
+  User, Mail, Calendar, Shield, Pencil, Loader2, Trash2, AlertTriangle,
+  CreditCard, Crown, Zap, Package, ArrowRight, TrendingUp, Layers,
+} from "lucide-react";
 import { toast } from "sonner";
-import { updateProfile, deleteAccount, logout } from "@/lib/api";
+import { updateProfile, deleteAccount, logout, fetchUserSubscriptions } from "@/lib/api";
+import type { UserSubscription } from "@/lib/api";
 import { useAccount } from "../layout";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 const roleColors: Record<string, string> = {
   superadmin: "bg-violet-100 text-violet-700",
-  admin: "bg-cyan-100 text-cyan-700",
-  editor: "bg-blue-100 text-blue-700",
-  viewer: "bg-gray-100 text-gray-700",
+  admin:      "bg-cyan-100 text-cyan-700",
+  editor:     "bg-blue-100 text-blue-700",
+  viewer:     "bg-gray-100 text-gray-700",
   subscriber: "bg-purple-100 text-purple-700",
-  user: "bg-slate-100 text-slate-700",
+  user:       "bg-slate-100 text-slate-700",
 };
+
+function formatAmount(amount: number, currency: string) {
+  if (!amount) return "Free";
+  const val = amount / 100;
+  return currency === "INR"
+    ? `₹${val.toLocaleString("en-IN")}`
+    : `$${val.toLocaleString("en-US")}`;
+}
+
+// ─── Subscription Summary Widget ──────────────────────────────────────────────
+
+function SubscriptionSummary() {
+  const [subs, setSubs] = useState<UserSubscription[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchUserSubscriptions()
+      .then((data: any) => setSubs(Array.isArray(data) ? data : (data?.subscriptions || [])))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const active = subs.filter((s) => s.status === "active");
+  const totalMonthly = active.reduce((sum, s) => {
+    const mo = s.billingCycle === "yearly" ? Math.round(s.amount / 12) : s.amount;
+    return sum + mo;
+  }, 0);
+  const hasBundles = active.some((s) => !!s.bundleId);
+
+  if (loading) {
+    return (
+      <Card>
+        <CardContent className="flex items-center justify-center py-8">
+          <Loader2 size={22} className="animate-spin text-muted-foreground" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="border-border/40 shadow-sm">
+      <CardHeader className="pb-0">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <CreditCard size={14} className="text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Subscriptions</CardTitle>
+          </div>
+          <Button variant="ghost" size="sm" asChild className="h-7 px-2 text-xs text-muted-foreground">
+            <Link href="/account/subscriptions">
+              Manage <ArrowRight size={10} className="ml-1" />
+            </Link>
+          </Button>
+        </div>
+      </CardHeader>
+
+      <CardContent className="pt-3 space-y-3">
+        {active.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-border bg-muted/30 px-4 py-6 flex flex-col items-center text-center gap-3">
+            <Package size={24} className="text-muted-foreground/40" />
+            <p className="text-sm text-muted-foreground">No active subscriptions yet.</p>
+            <Button size="sm" asChild>
+              <Link href="/dashboard">
+                <Zap size={12} className="mr-1.5" /> Browse Products
+              </Link>
+            </Button>
+          </div>
+        ) : (
+          <>
+            {/* Subscription list */}
+            <div className="space-y-1.5">
+              {active.slice(0, 3).map((sub) => (
+                <div
+                  key={sub.id}
+                  className="flex items-center justify-between rounded-md border border-border/50 bg-muted/30 px-3 py-2.5 hover:bg-muted/50 transition-colors"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-7 h-7 rounded-md bg-background border border-border/60 flex items-center justify-center shrink-0">
+                      {sub.bundleId ? (
+                        <Layers size={13} className="text-muted-foreground" />
+                      ) : (
+                        <Zap size={13} className="text-muted-foreground" />
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium leading-none truncate">
+                        {sub.productName || sub.bundleName || "Plan"}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground capitalize">
+                        {sub.billingCycle} · {formatAmount(sub.amount, sub.currency)}
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-xs font-medium text-green-700 dark:text-green-400 bg-green-100 dark:bg-green-900/30 px-2 py-0.5 rounded-full shrink-0">
+                    Active
+                  </span>
+                </div>
+              ))}
+
+              {active.length > 3 && (
+                <p className="text-xs text-muted-foreground text-center pt-0.5">
+                  +{active.length - 3} more ·{" "}
+                  <Link href="/account/subscriptions" className="text-primary hover:underline">
+                    view all
+                  </Link>
+                </p>
+              )}
+            </div>
+
+            {/* Footer: spend + actions */}
+            <div className="flex items-center justify-between pt-1 border-t border-border/40">
+              <div>
+                <p className="text-xs text-muted-foreground">
+                  Monthly spend
+                </p>
+                <p className="text-2xl font-bold leading-none mt-0.5">
+                  {formatAmount(totalMonthly, "INR")}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {hasBundles && (
+                  <span className="hidden sm:inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground border border-border/60 px-2 py-1 rounded-full">
+                    <Crown size={9} /> Bundle
+                  </span>
+                )}
+                <Button variant="outline" size="sm" className="h-8 text-xs" asChild>
+                  <Link href="/account/subscriptions">
+                    <TrendingUp size={11} className="mr-1" /> Upgrade
+                  </Link>
+                </Button>
+                <Button size="sm" className="h-8 text-xs" asChild>
+                  <Link href="/dashboard">
+                    <Package size={11} className="mr-1" /> Add
+                  </Link>
+                </Button>
+              </div>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+// ─── Main Profile Page ────────────────────────────────────────────────────────
 
 export default function ProfilePage() {
   const { user, setUser } = useAccount();
@@ -56,12 +208,14 @@ export default function ProfilePage() {
     setDeleting(false);
   };
 
-  const accountType = user.googleId ? "Google OAuth" : user.clerkId ? "Clerk" : "Email & Password";
+  const accountType = user.googleId ? "Google OAuth" : "Email & Password";
   const rc = roleColors[user.role] || roleColors.user;
+  const displayName = user.name || user.email.split("@")[0];
+  const initials = displayName.split(" ").map((w: string) => w[0]).join("").toUpperCase().slice(0, 2);
 
   return (
     <div className="space-y-6">
-      {/* Profile Card */}
+      {/* ── Profile Card ── */}
       <Card>
         <CardHeader>
           <div className="flex items-start justify-between">
@@ -70,7 +224,11 @@ export default function ProfilePage() {
               <CardDescription>Manage your personal details and account information</CardDescription>
             </div>
             {!editing && (
-              <Button variant="outline" size="sm" onClick={() => { setName(user.name || ""); setEditing(true); }}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => { setName(user.name || ""); setEditing(true); }}
+              >
                 <Pencil size={14} className="mr-1" /> Edit
               </Button>
             )}
@@ -79,8 +237,8 @@ export default function ProfilePage() {
         <CardContent className="space-y-6">
           {/* Avatar & Name */}
           <div className="flex items-center gap-4">
-            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary/20 to-primary/10 border border-primary/20 text-primary flex items-center justify-center text-xl font-bold">
-              {(user.name || user.email)[0].toUpperCase()}
+            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-violet-500/20 to-indigo-500/20 border-2 border-primary/20 text-primary flex items-center justify-center text-xl font-bold">
+              {initials}
             </div>
             <div className="flex-1">
               {editing ? (
@@ -123,37 +281,42 @@ export default function ProfilePage() {
               </div>
               <div>
                 <p className="text-xs text-muted-foreground font-medium">Email</p>
-                <p className="text-sm font-medium mt-1">{user.email}</p>
+                <p className="text-sm font-medium mt-0.5">{user.email}</p>
               </div>
             </div>
+
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-lg bg-muted">
                 <Shield size={16} className="text-muted-foreground" />
               </div>
               <div>
                 <p className="text-xs text-muted-foreground font-medium">Role</p>
-                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize mt-1 ${rc}`}>
+                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize mt-0.5 ${rc}`}>
                   {user.role}
                 </span>
               </div>
             </div>
+
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-lg bg-muted">
                 <User size={16} className="text-muted-foreground" />
               </div>
               <div>
                 <p className="text-xs text-muted-foreground font-medium">Account Type</p>
-                <p className="text-sm font-medium mt-1">{accountType}</p>
+                <p className="text-sm font-medium mt-0.5">{accountType}</p>
               </div>
             </div>
+
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-lg bg-muted">
                 <Calendar size={16} className="text-muted-foreground" />
               </div>
               <div>
                 <p className="text-xs text-muted-foreground font-medium">Member Since</p>
-                <p className="text-sm font-medium mt-1">
-                  {user.createdAt ? new Date(user.createdAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : "—"}
+                <p className="text-sm font-medium mt-0.5">
+                  {user.createdAt
+                    ? new Date(user.createdAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })
+                    : "—"}
                 </p>
               </div>
             </div>
@@ -161,7 +324,10 @@ export default function ProfilePage() {
         </CardContent>
       </Card>
 
-      {/* Account Status */}
+      {/* ── Subscription Summary ── */}
+      <SubscriptionSummary />
+
+      {/* ── Account Status ── */}
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Account Status</CardTitle>
@@ -170,16 +336,26 @@ export default function ProfilePage() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium">Status</p>
-              <p className="text-xs text-muted-foreground mt-1">Your account is currently {user.status || "active"}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Your account is currently {user.status || "active"}
+              </p>
             </div>
-            <Badge variant={user.status === "active" || !user.status ? "default" : user.status === "suspended" ? "destructive" : "secondary"}>
+            <Badge
+              variant={
+                user.status === "active" || !user.status
+                  ? "default"
+                  : user.status === "suspended"
+                  ? "destructive"
+                  : "secondary"
+              }
+            >
               {(user.status || "active").charAt(0).toUpperCase() + (user.status || "active").slice(1)}
             </Badge>
           </div>
         </CardContent>
       </Card>
 
-      {/* Danger Zone */}
+      {/* ── Danger Zone ── */}
       <Card className="border-red-200/50 bg-red-50/30">
         <CardHeader>
           <CardTitle className="text-base text-red-700">Danger Zone</CardTitle>
@@ -189,7 +365,9 @@ export default function ProfilePage() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium">Delete Account</p>
-              <p className="text-xs text-muted-foreground mt-1">Permanently delete your account and all associated data</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Permanently delete your account and all associated data
+              </p>
             </div>
             <Button variant="destructive" size="sm" onClick={() => setDeleteOpen(true)}>
               <Trash2 size={14} className="mr-1" /> Delete
@@ -198,7 +376,7 @@ export default function ProfilePage() {
         </CardContent>
       </Card>
 
-      {/* Delete Confirmation Dialog */}
+      {/* ── Delete Dialog ── */}
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent>
           <DialogHeader>
@@ -206,7 +384,7 @@ export default function ProfilePage() {
               <AlertTriangle size={18} className="text-red-600" /> Delete Account
             </DialogTitle>
             <DialogDescription>
-              This action cannot be undone. All your data, sessions, and preferences will be permanently removed from our systems.
+              This action cannot be undone. All your data, sessions, and preferences will be permanently removed.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

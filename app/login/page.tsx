@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, Zap, Eye, EyeOff, AlertCircle, MailCheck, CheckCircle } from "lucide-react";
+import { Loader2, Zap, Eye, EyeOff, AlertCircle, MailCheck, CheckCircle, Smartphone } from "lucide-react";
 import { checkUserAuth, isAllowedRedirect } from "@/lib/auth-redirect";
 import { useAuthMode } from "@/lib/auth-mode";
 
@@ -35,15 +35,52 @@ function ErrorAlert({ message }: { message: string }) {
     );
 }
 
-function VerificationNeededBanner({ email }: { email: string }) {
-    const [resending, setResending] = useState(false);
+function VerificationNeededBanner({ email, onBack, redirectUrl }: { email: string; onBack: () => void; redirectUrl: string }) {
+    const [otp, setOtp] = useState("");
+    const [verifyLoading, setVerifyLoading] = useState(false);
+    const [verifyError, setVerifyError] = useState("");
+    const [verifySuccess, setVerifySuccess] = useState(false);
+
+    const [resendLoading, setResendLoading] = useState(false);
     const [resendMsg, setResendMsg] = useState("");
     const [resendError, setResendError] = useState("");
 
+    const handleVerify = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setVerifyLoading(true);
+        setVerifyError("");
+        setResendMsg("");
+
+        if (otp.length !== 6) {
+            setVerifyError("Please enter a valid 6-digit code.");
+            setVerifyLoading(false);
+            return;
+        }
+
+        try {
+            const res = await fetch(`${API_URL}/auth/verify-email`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email, otp }),
+                credentials: "include",
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.message || "Invalid verification code.");
+            setVerifySuccess(true);
+            // Cookie is set by backend — redirect to destination after brief success message
+            setTimeout(() => { window.location.href = redirectUrl; }, 800);
+        } catch (err: any) {
+            setVerifyError(err.message || "Failed to verify. Please check the code and try again.");
+        } finally {
+            setVerifyLoading(false);
+        }
+    };
+
     const handleResend = async () => {
-        setResending(true);
+        setResendLoading(true);
         setResendMsg("");
         setResendError("");
+        setVerifyError("");
         try {
             const res = await fetch(`${API_URL}/auth/resend-verification`, {
                 method: "POST",
@@ -52,14 +89,23 @@ function VerificationNeededBanner({ email }: { email: string }) {
                 credentials: "include",
             });
             const data = await res.json().catch(() => ({}));
-            if (!res.ok) throw new Error(data.message || "Failed");
-            setResendMsg("Verification email sent! Check your inbox.");
+            if (!res.ok) throw new Error(data.message || "Failed to resend.");
+            setResendMsg("A new 6-digit code has been sent to your inbox.");
+            setOtp("");
         } catch (err: any) {
             setResendError(err.message || "Failed to resend. Try again.");
         } finally {
-            setResending(false);
+            setResendLoading(false);
         }
     };
+
+    if (verifySuccess) {
+        return (
+            <div className="flex items-center gap-2 rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm text-emerald-800">
+                <CheckCircle size={16} /> Email verified! Signing you in…
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-4">
@@ -68,23 +114,128 @@ function VerificationNeededBanner({ email }: { email: string }) {
                 <div>
                     <p className="font-semibold text-amber-900 text-sm">Email verification required</p>
                     <p className="text-amber-700 text-sm mt-1">
-                        Your account (<strong>{email}</strong>) needs to be verified before you can log in.
-                        Check your inbox for a verification link.
+                        We sent a <strong>6-digit code</strong> to <strong>{email}</strong>. Enter it below to verify your account.
                     </p>
                 </div>
             </div>
 
-            {resendMsg && (
-                <div className="flex items-center gap-2 rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm text-emerald-800">
-                    <CheckCircle size={16} />{resendMsg}
+            <form onSubmit={handleVerify} className="space-y-3">
+                <div className="space-y-1">
+                    <Label htmlFor="login-otp">Verification Code</Label>
+                    <Input
+                        id="login-otp"
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={6}
+                        placeholder="123456"
+                        className="text-center tracking-widest text-xl font-mono"
+                        value={otp}
+                        onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
+                        autoFocus
+                    />
                 </div>
-            )}
-            {resendError && <ErrorAlert message={resendError} />}
 
-            <Button variant="outline" className="w-full" onClick={handleResend} disabled={resending}>
-                {resending && <Loader2 size={16} className="animate-spin mr-2" />}
-                {resending ? "Sending…" : "Resend Verification Email"}
-            </Button>
+                {verifyError && <ErrorAlert message={verifyError} />}
+
+                {resendMsg && (
+                    <div className="flex items-center gap-2 rounded-lg bg-emerald-50 border border-emerald-200 px-4 py-3 text-sm text-emerald-800">
+                        <CheckCircle size={16} />{resendMsg}
+                    </div>
+                )}
+                {resendError && <ErrorAlert message={resendError} />}
+
+                <Button type="submit" className="w-full" disabled={verifyLoading || otp.length !== 6}>
+                    {verifyLoading && <Loader2 size={16} className="animate-spin mr-2" />}
+                    {verifyLoading ? "Verifying…" : "Verify & Sign In"}
+                </Button>
+            </form>
+
+            <div className="flex flex-col gap-2 border-t pt-3">
+                <Button variant="outline" className="w-full" onClick={handleResend} disabled={resendLoading}>
+                    {resendLoading && <Loader2 size={16} className="animate-spin mr-2" />}
+                    {resendLoading ? "Sending…" : "Resend Code"}
+                </Button>
+                <button
+                    className="text-sm text-primary hover:underline w-full text-center"
+                    onClick={onBack}
+                >
+                    ← Back to login
+                </button>
+            </div>
+        </div>
+    );
+}
+
+function TwoFactorChallenge({ email, onBack, redirectUrl }: { email: string; onBack: () => void; redirectUrl: string }) {
+    const [token, setToken] = useState("");
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState("");
+
+    const handleVerify = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setLoading(true);
+        setError("");
+
+        try {
+            const res = await fetch(`${API_URL}/auth/verify-2fa`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email, token }),
+                credentials: "include",
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.message || "Invalid 2FA code.");
+            
+            window.location.href = redirectUrl;
+        } catch (err: any) {
+            setError(err.message || "Failed to verify 2FA code.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <div className="space-y-4">
+            <div className="flex items-start gap-3 rounded-xl bg-blue-50 border border-blue-200 p-4">
+                <Smartphone size={20} className="shrink-0 text-blue-600 mt-0.5" />
+                <div>
+                    <p className="font-semibold text-blue-900 text-sm">Two-factor authentication</p>
+                    <p className="text-blue-700 text-sm mt-1">
+                        Enter the 6-digit code from your authenticator app to sign in.
+                    </p>
+                </div>
+            </div>
+
+            <form onSubmit={handleVerify} className="space-y-3">
+                <div className="space-y-1">
+                    <Label htmlFor="2fa-token">Authentication Code</Label>
+                    <Input
+                        id="2fa-token"
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={6}
+                        placeholder="000000"
+                        className="text-center tracking-widest text-xl font-mono"
+                        value={token}
+                        onChange={(e) => setToken(e.target.value.replace(/\D/g, ""))}
+                        autoFocus
+                    />
+                </div>
+
+                {error && <ErrorAlert message={error} />}
+
+                <Button type="submit" className="w-full" disabled={loading || token.length !== 6}>
+                    {loading && <Loader2 size={16} className="animate-spin mr-2" />}
+                    {loading ? "Verifying…" : "Verify & Sign In"}
+                </Button>
+            </form>
+
+            <button
+                className="text-sm text-primary hover:underline w-full text-center"
+                onClick={onBack}
+            >
+                ← Back to login
+            </button>
         </div>
     );
 }
@@ -100,6 +251,7 @@ function LoginForm({ redirectUrl }: { redirectUrl: string }) {
     const [loading, setLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
     const [verificationNeeded, setVerificationNeeded] = useState(false);
+    const [requires2FA, setRequires2FA] = useState(false);
 
     const handleGoogleSuccess = async (credentialResponse: any) => {
         try {
@@ -112,6 +264,12 @@ function LoginForm({ redirectUrl }: { redirectUrl: string }) {
                 credentials: "include",
             });
             if (res.ok) {
+                const data = await res.json().catch(() => ({}));
+                if (data.requires2FA) {
+                    if (data.user?.email) setEmail(data.user.email);
+                    setRequires2FA(true);
+                    return;
+                }
                 window.location.href = redirectUrl;
             } else {
                 const data = await res.json().catch(() => ({}));
@@ -144,9 +302,21 @@ function LoginForm({ redirectUrl }: { redirectUrl: string }) {
                 throw new Error(data.message || "Invalid email or password.");
             }
 
-            // Hybrid mode: email not yet verified
+            // Email not yet verified — trigger a fresh OTP and show verification form
             if (data.requiresVerification || data.emailVerificationPending) {
+                // Silently send a fresh OTP so user doesn't have to hit "Resend"
+                fetch(`${API_URL}/auth/resend-verification`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ email }),
+                    credentials: "include",
+                }).catch(() => {}); // fire-and-forget
                 setVerificationNeeded(true);
+                return;
+            }
+
+            if (data.requires2FA) {
+                setRequires2FA(true);
                 return;
             }
 
@@ -159,17 +329,24 @@ function LoginForm({ redirectUrl }: { redirectUrl: string }) {
         }
     };
 
+    // When account needs verification, also trigger a resend so the code is fresh
     if (verificationNeeded) {
         return (
-            <div className="space-y-4">
-                <VerificationNeededBanner email={email} />
-                <button
-                    className="text-sm text-primary hover:underline w-full text-center"
-                    onClick={() => setVerificationNeeded(false)}
-                >
-                    ← Back to login
-                </button>
-            </div>
+            <VerificationNeededBanner
+                email={email}
+                onBack={() => setVerificationNeeded(false)}
+                redirectUrl={redirectUrl}
+            />
+        );
+    }
+
+    if (requires2FA) {
+        return (
+            <TwoFactorChallenge
+                email={email}
+                onBack={() => setRequires2FA(false)}
+                redirectUrl={redirectUrl}
+            />
         );
     }
 
@@ -236,7 +413,6 @@ function LoginForm({ redirectUrl }: { redirectUrl: string }) {
                 <GoogleLogin
                     onSuccess={handleGoogleSuccess}
                     onError={() => setError("Google login failed. Please try again.")}
-                    useOneTap
                     theme="outline"
                     shape="pill"
                     width="100%"
@@ -256,15 +432,22 @@ function LoginPageInner() {
     const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
     const getRedirectUrl = useCallback(() => {
-        const raw = searchParams.get("redirect") || "/account";
-        return isAllowedRedirect(raw) ? raw : "/account";
+        // Support both `redirect` and `redirect_url` params
+        const raw = searchParams.get("redirect") || searchParams.get("redirect_url") || "/dashboard";
+        return isAllowedRedirect(raw) ? raw : "/dashboard";
     }, [searchParams]);
 
     useEffect(() => {
         if (authMode === null) return;
 
         const checkAuth = async () => {
-            const isAuthenticated = await checkUserAuth(API_URL);
+            // Timeout after 4 seconds — don't block login page on slow/broken backend
+            const timeoutPromise = new Promise<boolean>((resolve) =>
+                setTimeout(() => resolve(false), 4000)
+            );
+            const authCheck = checkUserAuth(API_URL);
+            const isAuthenticated = await Promise.race([authCheck, timeoutPromise]);
+
             if (isAuthenticated) {
                 window.location.href = getRedirectUrl();
                 return;
