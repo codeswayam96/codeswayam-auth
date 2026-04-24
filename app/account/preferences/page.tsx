@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Bell, Globe, Palette, Download, Loader2, UserX, AlertTriangle } from "lucide-react";
+import { Bell, Globe, Palette, Download, Loader2, UserX, AlertTriangle, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { fetchPreferences, updatePreferences, apiFetch, type UserPreferences } from "@/lib/api";
 import { useAccount } from "../layout";
