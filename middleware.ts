@@ -23,10 +23,8 @@ export function middleware(req: NextRequest) {
     const isProtected = PROTECTED_ROUTES.some((r) => pathname.startsWith(r));
     const isAuthRoute = AUTH_ROUTES.some((r) => pathname.startsWith(r));
 
-    // ONLY check the custom Authentication cookie — we no longer trust __session
-    // because that's a Clerk cookie that may be stale or belong to a different
-    // session after the user switches auth modes.
-    const authCookie = req.cookies.get("Authentication");
+    // Check for both custom and Clerk cookies to be safe
+    const authCookie = req.cookies.get("Authentication") || req.cookies.get("__session");
     const isAuthenticated = Boolean(authCookie?.value);
 
     if (isProtected && !isAuthenticated) {

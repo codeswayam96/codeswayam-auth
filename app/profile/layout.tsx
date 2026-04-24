@@ -43,13 +43,17 @@ export default function ProfileLayout({ children }: { children: React.ReactNode 
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setLoading(true);
-    fetchProfile()
-      .then(setUser)
-      .catch(() => {
-        router.push("/login");
-      })
-      .finally(() => setLoading(false));
+    // Small delay to ensure cookies are processed by the browser
+    const timer = setTimeout(() => {
+      fetchProfile()
+        .then((res) => setUser(res?.data ?? res))
+        .catch(() => {
+          router.push("/login");
+        })
+        .finally(() => setLoading(false));
+    }, 500);
+
+    return () => clearTimeout(timer);
   }, [router]);
 
   const handleLogout = async () => {
