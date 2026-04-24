@@ -18,7 +18,6 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Loader2, Zap, Eye, EyeOff, AlertCircle, MailCheck, CheckCircle, Smartphone } from "lucide-react";
 import { checkUserAuth, isAllowedRedirect } from "@/lib/auth-redirect";
-import { useAuthMode } from "@/lib/auth-mode";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 
@@ -428,7 +427,6 @@ function LoginForm({ redirectUrl }: { redirectUrl: string }) {
 
 function LoginPageInner() {
     const searchParams = useSearchParams();
-    const { authMode } = useAuthMode();
     const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
     const getRedirectUrl = useCallback(() => {
@@ -438,7 +436,6 @@ function LoginPageInner() {
     }, [searchParams]);
 
     useEffect(() => {
-        if (authMode === null) return;
 
         const checkAuth = async () => {
             // Timeout after 4 seconds — don't block login page on slow/broken backend
@@ -456,9 +453,9 @@ function LoginPageInner() {
         };
 
         checkAuth();
-    }, [authMode, getRedirectUrl]);
+    }, [getRedirectUrl]);
 
-    if (authMode === null || isCheckingAuth) {
+    if (isCheckingAuth) {
         return (
             <div className="flex min-h-screen items-center justify-center">
                 <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
@@ -480,9 +477,7 @@ function LoginPageInner() {
                     </Link>
                     <CardTitle className="text-2xl">Sign in to CodeSwayam</CardTitle>
                     <CardDescription>
-                        {authMode === "both"
-                            ? "Use your verified email and password to sign in"
-                            : "Use your account to access all tools"}
+                        Use your account to access all tools
                     </CardDescription>
                 </CardHeader>
                 <CardContent>

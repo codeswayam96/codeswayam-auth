@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const PROTECTED_ROUTES = ["/profile", "/account"];
+const PROTECTED_ROUTES = ["/profile", "/account", "/dashboard"];
 const AUTH_ROUTES = ["/login", "/signup", "/forgot-password", "/reset-password"];
 
 const ALLOWED_DOMAINS = ["localhost", "codeswayam.com"];
@@ -54,5 +54,5 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-    matcher: ["/profile/:path*", "/account/:path*", "/login", "/signup", "/forgot-password", "/reset-password"],
+    matcher: ["/profile/:path*", "/account/:path*", "/dashboard/:path*", "/login", "/signup", "/forgot-password", "/reset-password"],
 };

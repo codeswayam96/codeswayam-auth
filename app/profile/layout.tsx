@@ -6,7 +6,6 @@ import { usePathname, useRouter } from "next/navigation";
 import { User, Shield, CreditCard, LogOut, Zap, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { fetchProfile, logout } from "@/lib/api";
-import { useAuthMode } from "@/lib/auth-mode";
 import { toast } from "sonner";
 
 interface UserProfile {
@@ -40,25 +39,18 @@ const navItems = [
 export default function ProfileLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { authMode } = useAuthMode();
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Delay profile fetch in Clerk/Both mode to allow exchange to complete
-    const delay = (authMode === "both") ? 1000 : 0;
-
-    const timer = setTimeout(() => {
-      fetchProfile()
-        .then(setUser)
-        .catch(() => {
-          router.push("/login");
-        })
-        .finally(() => setLoading(false));
-    }, delay);
-
-    return () => clearTimeout(timer);
-  }, [router, authMode]);
+    setLoading(true);
+    fetchProfile()
+      .then(setUser)
+      .catch(() => {
+        router.push("/login");
+      })
+      .finally(() => setLoading(false));
+  }, [router]);
 
   const handleLogout = async () => {
     await logout();

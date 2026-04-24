@@ -12,7 +12,6 @@ import { Shield, Lock, Eye, EyeOff, Loader2, Key, Smartphone, LogOut, AlertCircl
 import { toast } from "sonner";
 import Link from "next/link";
 import { useAccount } from "../layout";
-import { useAuthMode } from "@/lib/auth-mode";
 import {
   changePassword,
   fetchSessions,
@@ -36,7 +35,6 @@ interface Session {
 
 export default function SecurityPage() {
   const { user } = useAccount();
-  const { authMode } = useAuthMode();
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);

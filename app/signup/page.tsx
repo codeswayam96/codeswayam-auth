@@ -18,7 +18,6 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Loader2, Zap, Eye, EyeOff, AlertCircle, MailCheck } from "lucide-react";
 import { checkUserAuth, isAllowedRedirect } from "@/lib/auth-redirect";
-import { useAuthMode } from "@/lib/auth-mode";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 
@@ -188,10 +187,8 @@ function EmailVerificationPending({
 
 function SignupForm({
     redirectUrl,
-    authMode,
 }: {
     redirectUrl: string;
-    authMode: "custom" | "both" | null;
 }) {
     const [name, setName] = useState("");
     const [email, setEmail] = useState("");
@@ -246,7 +243,6 @@ function SignupForm({
             }
 
             if (data.emailVerificationPending) {
-                // "both" mode: show the email verification UI
                 setEmailVerificationPending(true);
             } else {
                 // "custom" mode: logged in immediately
@@ -338,12 +334,7 @@ function SignupForm({
                     />
                 </div>
 
-                {authMode === "both" && (
-                    <p className="text-xs text-muted-foreground bg-muted/40 rounded-lg px-3 py-2">
-                        📧 We&apos;ll send a verification email after you create your account.
-                        You&apos;ll need to verify before logging in.
-                    </p>
-                )}
+
 
                 {error && (
                     <div className="flex items-center gap-2 rounded-lg bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">
@@ -388,7 +379,6 @@ function SignupForm({
 function SignupPageInner() {
     const router = useRouter();
     const searchParams = useSearchParams();
-    const { authMode } = useAuthMode();
     const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
     const getRedirectUrl = useCallback(() => {
@@ -402,7 +392,6 @@ function SignupPageInner() {
     }, [searchParams]);
 
     useEffect(() => {
-        if (authMode === null) return;
 
         const checkAuth = async () => {
             const timeoutPromise = new Promise<boolean>((resolve) =>
@@ -417,9 +406,9 @@ function SignupPageInner() {
         };
 
         checkAuth();
-    }, [authMode, getRedirectUrl, router]);
+    }, [getRedirectUrl, router]);
 
-    if (authMode === null || isCheckingAuth) {
+    if (isCheckingAuth) {
         return (
             <div className="flex min-h-screen items-center justify-center">
                 <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
@@ -445,7 +434,7 @@ function SignupPageInner() {
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
-                    <SignupForm redirectUrl={redirectUrl} authMode={authMode} />
+                    <SignupForm redirectUrl={redirectUrl} />
                 </CardContent>
                 <CardFooter className="justify-center">
                     <p className="text-sm text-muted-foreground">
