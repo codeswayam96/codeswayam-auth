@@ -18,6 +18,7 @@ import {
     RefreshCw,
     Code2,
     Mail,
+    Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -132,9 +133,13 @@ export default function HomePage() {
         checkAuth();
     }, [router]);
 
-    // Show nothing while checking authentication
+    // Show a loading spinner while checking authentication
     if (isLoading) {
-        return null;
+        return (
+            <div className="flex min-h-screen items-center justify-center bg-background">
+                <Loader2 className="w-8 h-8 animate-spin text-primary/60" />
+            </div>
+        );
     }
 
     return (
