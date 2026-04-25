@@ -94,3 +94,8 @@
 [data-radix-popper-content-wrapper] { z-index: 50 !important; }
 [data-radix-dialog-overlay] { z-index: 40 !important; }
 [data-radix-dialog-content] { z-index: 50 !important; }
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}

@@ -14,7 +14,10 @@ import {
 import { toast } from "sonner";
 import {
   fetchUserSubscriptions, cancelUserSubscription, fetchPublicPlans,
+  fetchReferralStats, type ReferralStats,
 } from "@/lib/api";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import type { UserSubscription } from "@/lib/api";
 import { RazorpayButton } from "@/components/razorpay-checkout";
 import { useAccount } from "../layout";
@@ -166,11 +169,13 @@ function TierBadge({ tier }: { tier: string }) {
 interface UpgradeModalProps {
   open: boolean; onClose: () => void;
   currentSub: UserSubscription; allProducts: PublicProduct[]; onSuccess: () => void;
+  referralStats: ReferralStats | null;
 }
 
-function UpgradeModal({ open, onClose, currentSub, allProducts, onSuccess }: UpgradeModalProps) {
+function UpgradeModal({ open, onClose, currentSub, allProducts, onSuccess, referralStats }: UpgradeModalProps) {
   const [cycle, setCycle] = useState<BillingCycle>("monthly");
   const [selected, setSelected] = useState<PublicProduct | null>(null);
+  const [usePoints, setUsePoints] = useState(false);
 
   const currentProduct = allProducts.find(p => p.id === currentSub.saasProductId);
   const currentTierIdx = TIERS.indexOf(currentProduct?.planTier || "standard");
@@ -197,6 +202,23 @@ function UpgradeModal({ open, onClose, currentSub, allProducts, onSuccess }: Upg
   const yearlySaving = plan?.pricing?.INR
     ? Math.max(0, (plan.pricing.INR.monthly * 12) - plan.pricing.INR.yearly)
     : 0;
+
+  // --- Points Discount Calculation ---
+  const activePoints = referralStats?.points?.active || 0;
+  const pointsToCurrencyRate = 10; // 10 pts = 1 INR
+  const maxDiscountPercent = 30; // 30%
+
+  let discountedPrice = upgradePrice || 0;
+  let pointsUsed = 0;
+  let discountAmount = 0;
+
+  if (usePoints && upgradePrice && activePoints > 0) {
+    const maxDiscountAllowed = (upgradePrice * maxDiscountPercent) / 100;
+    const pointsValueInCurrency = activePoints / pointsToCurrencyRate;
+    discountAmount = Math.min(maxDiscountAllowed, pointsValueInCurrency * 100); // converting to paise
+    pointsUsed = Math.ceil((discountAmount / 100) * pointsToCurrencyRate);
+    discountedPrice = Math.max(0, upgradePrice - discountAmount);
+  }
 
   const currentFeats = new Set(currentProduct?.features ?? []);
   const newFeats = (plan?.features ?? []).filter(f => !currentFeats.has(f));
@@ -228,7 +250,7 @@ function UpgradeModal({ open, onClose, currentSub, allProducts, onSuccess }: Upg
           {/* Plan selector cards */}
           <div
             className="grid gap-2.5 mb-5"
-            style={{ gridTemplateColumns: display.length === 1 ? "1fr" : "repeat(auto-fill, minmax(180px, 1fr))" }}
+            style={{ gridTemplateColumns: display.length === 1 ? "1fr" : "repeat(auto-fill, minmax(160px, 1fr))" }}
           >
             {display.map((p) => {
               const price = cycle === "yearly" ? p.pricing?.INR?.yearly : p.pricing?.INR?.monthly;
@@ -273,15 +295,13 @@ function UpgradeModal({ open, onClose, currentSub, allProducts, onSuccess }: Upg
           {plan && (
             <div className="rounded-xl border border-gray-200 overflow-hidden">
               {/* Header row */}
-              <div className="grid border-b border-gray-200" style={{ gridTemplateColumns: "1fr 120px 120px" }}>
-                <div className="px-3.5 py-2.5 text-[11px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50">Feature</div>
-                <div className="px-3.5 py-2.5 text-[11px] font-bold text-gray-400 border-l border-gray-200 text-center bg-gray-50">
+              <div className="grid border-b border-gray-200 bg-gray-50 sticky top-0" style={{ gridTemplateColumns: "1fr 90px 90px" }}>
+                <div className="px-3 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Feature</div>
+                <div className="px-3 py-2 text-[10px] font-bold text-gray-400 border-l border-gray-200 text-center">
                   Current
-                  {currentProduct?.planTier && <span className="block text-[10px] capitalize">{currentProduct.planTier}</span>}
                 </div>
-                <div className="px-3.5 py-2.5 text-[11px] font-bold text-violet-700 border-l border-gray-200 text-center bg-gray-50">
-                  {plan.name}
-                  {plan.planTier && <span className="block text-[10px] capitalize text-gray-400">{plan.planTier}</span>}
+                <div className="px-3 py-2 text-[10px] font-bold text-violet-700 border-l border-gray-200 text-center">
+                  New
                 </div>
               </div>
 
@@ -294,13 +314,13 @@ function UpgradeModal({ open, onClose, currentSub, allProducts, onSuccess }: Upg
                     </span>
                   </div>
                   {newFeats.map((feat, i) => (
-                    <div key={`new-${i}`} className="grid border-b border-gray-100 bg-[#fdfdff]" style={{ gridTemplateColumns: "1fr 120px 120px" }}>
-                      <div className="px-3.5 py-2.5 text-[13px] text-gray-700 font-medium">{feat}</div>
-                      <div className="px-3.5 py-2.5 border-l border-gray-100 flex justify-center items-center">
-                        <span className="text-gray-300 text-base leading-none">—</span>
+                    <div key={`new-${i}`} className="grid border-b border-gray-100 bg-[#fdfdff]" style={{ gridTemplateColumns: "1fr 90px 90px" }}>
+                      <div className="px-3 py-2 text-xs text-gray-700 font-medium">{feat}</div>
+                      <div className="px-3 py-2 border-l border-gray-100 flex justify-center items-center">
+                        <span className="text-gray-300 text-smLeading-none">—</span>
                       </div>
-                      <div className="px-3.5 py-2.5 border-l border-gray-100 flex justify-center items-center">
-                        <CheckCircle2 size={15} className="text-violet-700" />
+                      <div className="px-3 py-2 border-l border-gray-100 flex justify-center items-center">
+                        <CheckCircle2 size={14} className="text-violet-700" />
                       </div>
                     </div>
                   ))}
@@ -316,12 +336,12 @@ function UpgradeModal({ open, onClose, currentSub, allProducts, onSuccess }: Upg
                     </span>
                   </div>
                   {keptFeats.map((feat, i) => (
-                    <div key={`kept-${i}`} className="grid border-b border-gray-100" style={{ gridTemplateColumns: "1fr 120px 120px" }}>
-                      <div className="px-3.5 py-2.5 text-[13px] text-gray-700 font-medium">{feat}</div>
-                      <div className="px-3.5 py-2.5 border-l border-gray-100 flex justify-center items-center">
+                    <div key={`kept-${i}`} className="grid border-b border-gray-100" style={{ gridTemplateColumns: "1fr 90px 90px" }}>
+                      <div className="px-3 py-2 text-xs text-gray-700 font-medium">{feat}</div>
+                      <div className="px-3 py-2 border-l border-gray-100 flex justify-center items-center">
                         <CheckCircle2 size={14} className="text-emerald-500" />
                       </div>
-                      <div className="px-3.5 py-2.5 border-l border-gray-100 flex justify-center items-center">
+                      <div className="px-3 py-2 border-l border-gray-100 flex justify-center items-center">
                         <CheckCircle2 size={14} className="text-emerald-500" />
                       </div>
                     </div>
@@ -367,16 +387,76 @@ function UpgradeModal({ open, onClose, currentSub, allProducts, onSuccess }: Upg
               </span>
             </div>
           )}
+
+          {/* Points Redemption Section */}
+          {upgradePrice && upgradePrice > 0 && (
+            <div className={`mt-4 p-4 rounded-xl border flex flex-col gap-3 transition-colors ${
+              activePoints > 0 
+                ? "border-amber-200 bg-amber-50/50" 
+                : "border-gray-100 bg-gray-50/50 opacity-80"
+            }`}>
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                    activePoints > 0 ? "bg-amber-100 text-amber-600" : "bg-gray-200 text-gray-400"
+                  }`}>
+                    <Star size={16} fill="currentColor" />
+                  </div>
+                  <div>
+                    <p className="m-0 text-sm font-bold text-gray-900">Redeem Referral Points</p>
+                    <p className="m-0 text-[11px] text-gray-500">
+                      {activePoints > 0 
+                        ? <>You have <strong>{activePoints.toLocaleString()}</strong> active points</>
+                        : "Earn points by inviting friends to get discounts"}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="use-points" className={`text-xs font-bold cursor-pointer ${
+                    activePoints > 0 ? "text-gray-600" : "text-gray-300"
+                  }`}>Use Points</Label>
+                  <Switch 
+                    id="use-points" 
+                    checked={usePoints} 
+                    onCheckedChange={setUsePoints} 
+                    disabled={activePoints <= 0}
+                  />
+                </div>
+              </div>
+              
+              {usePoints && activePoints > 0 && (
+                <div className="pt-2 border-t border-amber-200/50 flex items-center justify-between text-xs font-medium text-amber-800">
+                  <span className="flex items-center gap-1.5">
+                    <CheckCircle2 size={13} /> Applying {pointsUsed.toLocaleString()} points
+                  </span>
+                  <span className="font-bold">-{formatInr(discountAmount)} Discount</span>
+                </div>
+              )}
+
+              {activePoints <= 0 && (
+                <Link href="/account/referrals" className="text-[10px] font-bold text-violet-600 hover:underline flex items-center gap-1">
+                  Learn how to earn points <ArrowRight size={10} />
+                </Link>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Sticky CTA footer */}
         <div className="px-6 py-4 border-t border-gray-100 shrink-0 flex items-center justify-between gap-3 bg-white flex-wrap">
           <div>
             {plan && upgradePrice && upgradePrice > 0 ? (
-              <>
-                <span className="text-[22px] font-black text-gray-900">{formatInr(upgradePrice)}</span>
-                <span className="text-xs text-gray-400">/{cycle === "yearly" ? "yr" : "mo"}</span>
-              </>
+              <div className="flex flex-col">
+                {usePoints && (
+                  <span className="text-[10px] font-bold text-gray-400 line-through mb-[-4px]">
+                    {formatInr(upgradePrice)}
+                  </span>
+                )}
+                <div>
+                  <span className="text-[22px] font-black text-violet-700">{formatInr(discountedPrice)}</span>
+                  <span className="text-xs text-gray-400">/{cycle === "yearly" ? "yr" : "mo"}</span>
+                </div>
+              </div>
             ) : (
               <span className="text-sm text-gray-500">Select a plan above</span>
             )}
@@ -396,6 +476,7 @@ function UpgradeModal({ open, onClose, currentSub, allProducts, onSuccess }: Upg
                 size="sm"
                 className="h-8 text-xs gap-1.5 font-bold"
                 icon={<ArrowRight size={13} />}
+                usePoints={usePoints}
                 onSuccess={() => { onSuccess(); onClose(); }}
               />
             )}
@@ -411,10 +492,12 @@ function UpgradeModal({ open, onClose, currentSub, allProducts, onSuccess }: Upg
 interface BundleUpsellModalProps {
   open: boolean; onClose: () => void;
   userSubscriptions: UserSubscription[]; allBundles: PublicBundle[]; onSuccess: () => void;
+  referralStats: ReferralStats | null;
 }
 
-function BundleUpsellModal({ open, onClose, userSubscriptions, allBundles, onSuccess }: BundleUpsellModalProps) {
+function BundleUpsellModal({ open, onClose, userSubscriptions, allBundles, onSuccess, referralStats }: BundleUpsellModalProps) {
   const [cycle, setCycle] = useState<BillingCycle>("monthly");
+  const [usePoints, setUsePoints] = useState(false);
   const monthlySpend = userSubscriptions.filter(s => s.status === "active").reduce((sum, s) => {
     return sum + (s.billingCycle === "yearly" ? Math.round(s.amount / 12) : s.amount);
   }, 0);
@@ -437,8 +520,16 @@ function BundleUpsellModal({ open, onClose, userSubscriptions, allBundles, onSuc
           </DialogDescription>
         </DialogHeader>
 
-        <div className="my-2">
+        <div className="my-2 flex items-center justify-between gap-4">
           <BillingToggle cycle={cycle} onChange={setCycle} />
+          
+          {referralStats && referralStats.points.active > 0 && (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-amber-200 bg-amber-50">
+              <Star size={12} className="text-amber-500" fill="currentColor" />
+              <Label htmlFor="bundle-use-points" className="text-[10px] font-bold text-amber-700 cursor-pointer">Redeem Points</Label>
+              <Switch id="bundle-use-points" checked={usePoints} onCheckedChange={setUsePoints} className="scale-75 origin-right" />
+            </div>
+          )}
         </div>
 
         {allBundles.length === 0 ? (
@@ -491,6 +582,7 @@ function BundleUpsellModal({ open, onClose, userSubscriptions, allBundles, onSuc
                       label={`Get ${bundle.name}`} fullWidth
                       className="h-[42px] text-sm font-bold w-full text-white rounded-lg bg-gradient-to-r from-violet-700 to-indigo-600 border-none"
                       icon={<Crown size={15} />}
+                      usePoints={usePoints}
                       onSuccess={() => { onSuccess(); onClose(); }}
                     />
                   </div>
@@ -638,14 +730,20 @@ export default function SubscriptionsPage() {
   const [error, setError] = useState("");
   const [upgradeModal, setUpgradeModal] = useState<UserSubscription | null>(null);
   const [bundleModal, setBundleModal] = useState(false);
+  const [referralStats, setReferralStats] = useState<ReferralStats | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [subsData, plansData] = await Promise.all([fetchUserSubscriptions(), fetchPublicPlans()]);
+      const [subsData, plansData, refData] = await Promise.all([
+        fetchUserSubscriptions(),
+        fetchPublicPlans(),
+        fetchReferralStats().catch(() => null)
+      ]);
       setSubscriptions(Array.isArray(subsData) ? subsData : ((subsData as any)?.subscriptions || []));
       setAllProducts((plansData.products as any[]) || []);
       setAllBundles((plansData.bundles as any[]) || []);
+      setReferralStats(refData);
     } catch (err: any) {
       setError(err.message || "Failed to load subscriptions");
     } finally {
@@ -693,7 +791,7 @@ export default function SubscriptionsPage() {
     <div className="flex flex-col gap-6 pb-12">
 
       {/* ── Stats Bar ── */}
-      <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))" }}>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard label="Active Plans" value={String(activeSubscriptions.length)} iconBg="#dcfce7" iconColor="#16a34a" icon={<CreditCard size={17} />} />
         <StatCard label="Monthly Spend" value={formatAmount(totalMonthlySpend, "INR")} iconBg="#ede9fe" iconColor="#7c3aed" icon={<DollarSign size={17} />} />
         <StatCard
@@ -713,23 +811,23 @@ export default function SubscriptionsPage() {
 
       {/* ── Bundle Upsell Banner ── */}
       {allBundles.length > 0 && activeSubscriptions.length > 0 && (
-        <div className="relative rounded-xl border border-violet-200 bg-gradient-to-br from-violet-50 to-violet-100 px-6 py-5 flex flex-wrap items-center justify-between gap-4 overflow-hidden">
+        <div className="relative rounded-xl border border-violet-200 bg-gradient-to-br from-violet-50 to-violet-100 px-4 sm:px-6 py-5 flex flex-col sm:flex-row items-center justify-between gap-4 overflow-hidden text-center sm:text-left">
           {/* Decorative crown */}
-          <div className="absolute right-4 top-1/2 -translate-y-1/2 opacity-[0.06] pointer-events-none">
+          <div className="absolute right-4 top-1/2 -translate-y-1/2 opacity-[0.06] pointer-events-none hidden sm:block">
             <Crown size={100} className="text-violet-700" />
           </div>
-          <div className="relative z-10 flex items-center gap-3.5">
+          <div className="relative z-10 flex flex-col sm:flex-row items-center gap-3.5">
             <div className="w-12 h-12 rounded-xl bg-violet-100 border border-violet-200 flex items-center justify-center shrink-0">
               <Crown size={22} className="text-violet-700" />
             </div>
             <div>
               <p className="m-0 mb-0.5 font-bold text-sm text-gray-900">Unlock more with a Bundle</p>
-              <p className="m-0 text-[13px] text-gray-500">Access multiple SaaS tools at a significantly lower price than individual subscriptions.</p>
+              <p className="m-0 text-[13px] text-gray-500">Access multiple tools at a significantly lower price.</p>
             </div>
           </div>
           <button
             onClick={() => setBundleModal(true)}
-            className="relative z-10 inline-flex items-center gap-1.5 px-[18px] py-2.5 rounded-lg text-[13px] font-bold bg-gradient-to-r from-violet-700 to-indigo-600 text-white border-none cursor-pointer shrink-0"
+            className="relative z-10 inline-flex items-center gap-1.5 px-[18px] py-2.5 rounded-lg text-[13px] font-bold bg-gradient-to-r from-violet-700 to-indigo-600 text-white border-none cursor-pointer shrink-0 w-full sm:w-auto justify-center"
           >
             <Crown size={14} /> View Bundles
           </button>
@@ -857,13 +955,19 @@ export default function SubscriptionsPage() {
       {upgradeModal && (
         <UpgradeModal
           open={!!upgradeModal} onClose={() => setUpgradeModal(null)}
-          currentSub={upgradeModal} allProducts={allProducts as PublicProduct[]} onSuccess={loadData}
+          currentSub={upgradeModal}
+          allProducts={allProducts as PublicProduct[]}
+          referralStats={referralStats}
+          onSuccess={loadData}
         />
       )}
 
       <BundleUpsellModal
         open={bundleModal} onClose={() => setBundleModal(false)}
-        userSubscriptions={subscriptions} allBundles={allBundles as PublicBundle[]} onSuccess={loadData}
+        userSubscriptions={subscriptions}
+        allBundles={allBundles as PublicBundle[]}
+        referralStats={referralStats}
+        onSuccess={loadData}
       />
 
       <CancelDialog

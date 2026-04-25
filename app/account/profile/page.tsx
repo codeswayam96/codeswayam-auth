@@ -145,18 +145,18 @@ function SubscriptionSummary() {
                   {formatAmount(totalMonthly, "INR")}
                 </p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 flex-wrap justify-end">
                 {hasBundles && (
                   <span className="hidden sm:inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground border border-border/60 px-2 py-1 rounded-full">
                     <Crown size={9} /> Bundle
                   </span>
                 )}
-                <Button variant="outline" size="sm" className="h-8 text-xs" asChild>
+                <Button variant="outline" size="sm" className="h-8 text-[11px] sm:text-xs px-2 sm:px-3" asChild>
                   <Link href="/account/subscriptions">
                     <TrendingUp size={11} className="mr-1" /> Upgrade
                   </Link>
                 </Button>
-                <Button size="sm" className="h-8 text-xs" asChild>
+                <Button size="sm" className="h-8 text-[11px] sm:text-xs px-2 sm:px-3" asChild>
                   <Link href="/dashboard">
                     <Package size={11} className="mr-1" /> Add
                   </Link>
@@ -249,7 +249,7 @@ export default function ProfilePage() {
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="Your full name"
-                    className="w-64"
+                    className="w-full max-w-sm"
                   />
                 </div>
               ) : (

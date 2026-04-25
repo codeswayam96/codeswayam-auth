@@ -6,7 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
   Loader2, Copy, CheckCircle2, Link2,
-  Coins, Users, Gift, ArrowRight, AlertCircle,
+  Coins, Users, Gift, ArrowRight, AlertCircle, Shield,
 } from "lucide-react";
 
 type CopyType = "code" | "link" | null;
@@ -87,17 +87,17 @@ export default function ReferralsPage() {
     <div className="space-y-6 pb-12">
 
       {/* ── Page header ─────────────────────────────────────────────── */}
-      <div className="relative overflow-hidden rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 via-violet-100/60 to-white px-7 py-6">
+      <div className="relative overflow-hidden rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 via-violet-100/60 to-white px-5 sm:px-7 py-5 sm:py-6 text-center sm:text-left">
         <div className="pointer-events-none absolute -right-8 -top-8 h-40 w-40 rounded-full border-[28px] border-violet-200/40" />
-        <div className="relative flex flex-wrap items-center justify-between gap-4">
+        <div className="relative flex flex-col sm:flex-row items-center justify-between gap-4">
           <div>
-            <p className="text-xs font-bold uppercase tracking-widest text-violet-600">Referral Program</p>
-            <h1 className="mt-1 text-3xl font-extrabold tracking-tight text-gray-900">Earn Points</h1>
-            <p className="mt-2 max-w-2xl text-sm text-gray-500">
-              Share your referral code, invite friends, and collect bonus points every time a referral is redeemed.
+            <p className="text-[10px] sm:text-xs font-bold uppercase tracking-widest text-violet-600">Referral Program</p>
+            <h1 className="mt-1 text-2xl sm:text-3xl font-extrabold tracking-tight text-gray-900">Earn Points</h1>
+            <p className="mt-2 max-w-2xl text-xs sm:text-sm text-gray-500">
+              Share your code, invite friends, and collect bonus points.
             </p>
           </div>
-          <div className="inline-flex items-center gap-2 rounded-lg border border-violet-200 bg-white px-3 py-2 text-xs font-semibold text-violet-700 shadow-sm">
+          <div className="inline-flex items-center gap-2 rounded-lg border border-violet-200 bg-white px-3 py-1.5 sm:py-2 text-[10px] sm:text-xs font-semibold text-violet-700 shadow-sm">
             <Gift size={14} /> Reward system active
           </div>
         </div>
@@ -210,26 +210,50 @@ export default function ReferralsPage() {
       </div>
 
       {/* ── Stats ───────────────────────────────────────────────────── */}
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-3">
         <Card className="border-gray-100 shadow-sm">
-          <CardContent className="flex items-center gap-4 p-6">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-violet-50">
-              <Users size={22} className="text-violet-600" />
+          <CardContent className="flex items-center gap-4 p-4 sm:p-6">
+            <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-2xl bg-violet-50">
+              <Users size={20} className="text-violet-600" />
             </div>
             <div>
-              <p className="text-sm font-medium text-gray-500">Total Redeemed</p>
-              <p className="text-3xl font-extrabold text-gray-900">{stats?.totalRedeemed ?? 0}</p>
+              <p className="text-xs sm:text-sm font-medium text-gray-500">Total Redeemed</p>
+              <p className="text-2xl sm:text-3xl font-extrabold text-gray-900">{stats?.totalRedeemed ?? 0}</p>
             </div>
           </CardContent>
         </Card>
-        <Card className="border-gray-100 shadow-sm">
-          <CardContent className="flex items-center gap-4 p-6">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-50">
-              <Coins size={22} className="text-emerald-600" />
+
+        <Card className="border-gray-100 shadow-sm relative overflow-hidden group">
+          <div className="absolute top-0 right-0 p-2 opacity-10 group-hover:opacity-20 transition-opacity">
+            <Shield className="w-12 h-12 text-emerald-600" />
+          </div>
+          <CardContent className="flex items-center gap-4 p-4 sm:p-6">
+            <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-50">
+              <Coins size={20} className="text-emerald-600" />
             </div>
             <div>
-              <p className="text-sm font-medium text-gray-500">Points Earned</p>
-              <p className="text-3xl font-extrabold text-gray-900">{stats?.pointsEarned ?? 0}</p>
+              <p className="text-xs sm:text-sm font-medium text-gray-500">Active Points</p>
+              <p className="text-2xl sm:text-3xl font-extrabold text-emerald-600">{stats?.points?.active ?? 0}</p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-gray-100 shadow-sm bg-amber-50/30 border-dashed">
+          <CardContent className="flex items-center gap-4 p-4 sm:p-6">
+            <div className="flex h-10 w-10 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-50">
+              <Loader2 size={20} className="text-amber-600" />
+            </div>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <p className="text-xs sm:text-sm font-medium text-gray-500">Pending</p>
+                <div className="group relative cursor-help">
+                    <AlertCircle size={10} className="text-gray-400" />
+                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-gray-900 text-white text-[10px] rounded-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10 shadow-xl">
+                        Held for 7 days to prevent fraud.
+                    </div>
+                </div>
+              </div>
+              <p className="text-2xl sm:text-3xl font-extrabold text-amber-600">{stats?.points?.pending ?? 0}</p>
             </div>
           </CardContent>
         </Card>
@@ -240,29 +264,29 @@ export default function ReferralsPage() {
         <h2 className="mb-4 text-xl font-bold text-gray-900">Redemption History</h2>
 
         {stats?.history && stats.history.length > 0 ? (
-          <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-            <table className="w-full text-left text-sm text-gray-600">
-              <thead className="border-b bg-gray-50 text-xs uppercase text-gray-500">
+          <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm no-scrollbar">
+            <table className="w-full text-left text-sm text-gray-600 min-w-[500px] sm:min-w-0">
+              <thead className="border-b bg-gray-50 text-[10px] sm:text-xs uppercase text-gray-500">
                 <tr>
-                  <th className="px-6 py-4 font-semibold">Date</th>
-                  <th className="px-6 py-4 font-semibold">Status</th>
-                  <th className="px-6 py-4 text-right font-semibold">Points</th>
+                  <th className="px-4 sm:px-6 py-3 sm:py-4 font-semibold">Date</th>
+                  <th className="px-4 sm:px-6 py-3 sm:py-4 font-semibold">Status</th>
+                  <th className="px-4 sm:px-6 py-3 sm:py-4 text-right font-semibold">Points</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {stats.history.map((item) => (
                   <tr key={item.id} className="transition-colors hover:bg-gray-50/60">
-                    <td className="px-6 py-4">
+                    <td className="px-4 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm">
                       {new Date(item.createdAt).toLocaleDateString("en-US", {
                         year: "numeric", month: "short", day: "numeric",
                       })}
                     </td>
-                    <td className="px-6 py-4">
-                      <span className="inline-flex rounded-full bg-green-50 px-2.5 py-1 text-xs font-semibold text-green-700">
+                    <td className="px-4 sm:px-6 py-3 sm:py-4">
+                      <span className="inline-flex rounded-full bg-green-50 px-2 py-0.5 sm:px-2.5 sm:py-1 text-[10px] sm:text-xs font-semibold text-green-700">
                         {item.status}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-right font-semibold text-green-600">
+                    <td className="px-4 sm:px-6 py-3 sm:py-4 text-right font-semibold text-green-600 text-xs sm:text-sm">
                       +{item.pointsAwarded}
                     </td>
                   </tr>

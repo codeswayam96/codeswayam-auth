@@ -3,7 +3,7 @@
 import { useState, useEffect, createContext, useContext } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Home, User, CreditCard, Settings, LogOut, Zap, Loader2, Shield, DollarSign, LayoutDashboard, Coins, Users } from "lucide-react";
+import { Home, User, CreditCard, Settings, LogOut, Zap, Loader2, Shield, DollarSign, LayoutDashboard, Coins, Users, Menu, X, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { fetchProfile, logout } from "@/lib/api";
 import { toast } from "sonner";
@@ -25,7 +25,7 @@ const AccountContext = createContext<{
   user: UserProfile | null;
   setUser: (u: UserProfile | null) => void;
   loading: boolean;
-}>({ user: null, setUser: () => {}, loading: true });
+}>({ user: null, setUser: () => { }, loading: true });
 
 export function useAccount() {
   return useContext(AccountContext);
@@ -41,6 +41,12 @@ const navItems = [
   { href: "/account/credits", icon: Coins, label: "Credits" },
   { href: "/account/referrals", icon: Users, label: "Referrals" },
   { href: "/account/preferences", icon: Settings, label: "Preferences" },
+];
+
+const adminItems = [
+  { href: "/account/admin/domains", icon: Shield, label: "SSO Domains" },
+  { href: "/account/admin/referrals", icon: Users, label: "Referral Panel" },
+  { href: "/account/admin/security", icon: Shield, label: "Security Center" },
 ];
 
 import {
@@ -93,23 +99,23 @@ export default function AccountLayout({ children }: { children: React.ReactNode 
     <AccountContext.Provider value={{ user, setUser, loading }}>
       <div className="min-h-screen bg-muted/30">
         {/* Top navbar */}
-        <header className="sticky top-0 z-30 border-b bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/60 shadow-sm">
-          <div className="max-w-7xl mx-auto flex h-16 items-center px-6">
+        <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/60 shadow-sm">
+          <div className="max-w-[1440px] mx-auto flex h-16 items-center px-4 sm:px-6">
             <Link href="/dashboard" className="flex items-center gap-2 mr-auto hover:opacity-80 transition-opacity">
               <div className="w-8 h-8 rounded-xl bg-primary flex items-center justify-center shadow-lg shadow-primary/20">
                 <Zap size={16} className="text-primary-foreground fill-current" />
               </div>
-              <span className="font-bold text-base tracking-tight">CodeSwayam</span>
+              <span className="font-bold text-sm sm:text-base tracking-tight">CodeSwayam</span>
             </Link>
-            
-            <div className="flex items-center gap-4">
+
+            <div className="flex items-center gap-2 sm:gap-4">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button className="flex items-center gap-2.5 hover:bg-accent/50 p-1.5 rounded-xl transition-all border border-transparent hover:border-border outline-none">
+                  <button className="flex items-center gap-2 hover:bg-accent/50 p-1 rounded-lg sm:rounded-xl transition-all border border-transparent hover:border-border outline-none">
                     <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center text-xs font-bold ring-2 ring-background">
                       {initials}
                     </div>
-                    <div className="hidden sm:block text-left">
+                    <div className="hidden md:block text-left">
                       <p className="text-xs font-semibold leading-none">{displayName}</p>
                       <p className="text-[10px] text-muted-foreground mt-0.5">{user?.email}</p>
                     </div>
@@ -139,15 +145,44 @@ export default function AccountLayout({ children }: { children: React.ReactNode 
           </div>
         </header>
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6">
+        {/* Mobile Horizontal Nav (Sticky below header) */}
+        <div className="md:hidden sticky top-16 z-30 bg-background/80 backdrop-blur border-b overflow-x-auto no-scrollbar">
+          <div className="flex px-4 py-2 gap-1 min-w-max">
+            {navItems.map((item) => {
+              const active = pathname === item.href;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    "flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-colors",
+                    active
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                  )}
+                >
+                  <item.icon size={14} />
+                  {item.label}
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-6">
           <div className="mb-6">
             <h1 className="text-xl font-bold tracking-tight">My Account</h1>
             <p className="text-sm text-muted-foreground mt-0.5">Manage your profile, subscriptions, and account settings</p>
           </div>
 
-          <div className="flex flex-col md:flex-row gap-6">
-            {/* Sidebar nav */}
-            <nav className="shrink-0 space-y-0.5" style={{ width: "220px", maxWidth: "100%" }}>
+          <div className="flex flex-col md:flex-row gap-6 md:gap-8">
+            {/* Sidebar nav (Desktop only) */}
+            <nav className="hidden md:block shrink-0 space-y-1" style={{ width: "220px" }}>
+              <div className="mb-4">
+                <h2 className="text-lg font-bold tracking-tight">Settings</h2>
+                <p className="text-[10px] text-muted-foreground mt-0.5 uppercase font-bold tracking-wider">Account Control</p>
+              </div>
+
               {navItems.map((item) => {
                 const active = pathname === item.href;
                 return (
@@ -155,28 +190,57 @@ export default function AccountLayout({ children }: { children: React.ReactNode 
                     key={item.href}
                     href={item.href}
                     className={cn(
-                      "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
+                      "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all group",
                       active
-                        ? "bg-primary/10 text-primary"
+                        ? "bg-primary text-primary-foreground shadow-sm shadow-primary/20"
                         : "text-muted-foreground hover:bg-accent hover:text-foreground"
                     )}
                   >
-                    <item.icon size={18} />
+                    <item.icon size={18} className={cn("transition-transform group-hover:scale-110", active ? "scale-110" : "")} />
                     {item.label}
                   </Link>
                 );
               })}
-              <button
-                onClick={handleLogout}
-                className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors w-full"
-              >
-                <LogOut size={18} />
-                Sign Out
-              </button>
+
+              {(user?.role === "admin" || user?.role === "superadmin") && (
+                <>
+                  <div className="px-3 pt-6 pb-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60 border-t mt-4">
+                    Admin Services
+                  </div>
+                  {adminItems.map((item) => {
+                    const active = pathname === item.href;
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        className={cn(
+                          "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all group",
+                          active
+                            ? "bg-violet-600 text-white shadow-sm shadow-violet-200"
+                            : "text-muted-foreground hover:bg-accent hover:text-foreground"
+                        )}
+                      >
+                        <item.icon size={18} className="group-hover:scale-110" />
+                        {item.label}
+                      </Link>
+                    );
+                  })}
+                </>
+              )}
+
+              <div className="pt-4 mt-4 border-t">
+                <button
+                  onClick={handleLogout}
+                  className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors w-full"
+                >
+                  <LogOut size={18} />
+                  Sign Out
+                </button>
+              </div>
             </nav>
 
             {/* Main content */}
-            <main className="flex-1" style={{ minWidth: 0, width: "100%" }}>
+            <main className="flex-1 overflow-hidden" style={{ minWidth: 0 }}>
               {children}
             </main>
           </div>

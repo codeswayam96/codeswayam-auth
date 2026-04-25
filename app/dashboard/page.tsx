@@ -62,12 +62,12 @@ function yearlySavingPct(monthly: number, yearly: number): number {
 
 function BillingToggle({ cycle, onChange }: { cycle: BillingCycle; onChange: (c: BillingCycle) => void }) {
   return (
-    <div className="inline-flex items-center rounded-full border border-white/25 bg-white/10 p-1 gap-1">
+    <div className="inline-flex items-center rounded-full border border-white/25 bg-white/10 p-1 gap-1 w-full sm:w-auto">
       {(["monthly", "yearly"] as const).map((opt) => (
         <button
           key={opt}
           onClick={() => onChange(opt)}
-          className={`flex items-center gap-2 rounded-full px-5 py-2 text-sm font-semibold border-none cursor-pointer transition-all duration-200
+          className={`flex-1 sm:flex-none flex items-center justify-center gap-2 rounded-full px-3 sm:px-5 py-2 text-xs sm:text-sm font-semibold border-none cursor-pointer transition-all duration-200
             ${cycle === opt
               ? "bg-white text-violet-700 shadow-sm"
               : "bg-transparent text-white/75"
@@ -76,13 +76,13 @@ function BillingToggle({ cycle, onChange }: { cycle: BillingCycle; onChange: (c:
           {opt === "monthly" ? "Monthly" : "Yearly"}
           {opt === "yearly" && (
             <span
-              className={`text-[10px] font-bold px-2 py-0.5 rounded-full
+              className={`text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-full
                 ${cycle === "yearly"
                   ? "bg-violet-100 text-violet-700"
                   : "bg-emerald-400/25 text-emerald-100"
                 }`}
             >
-              Save 17%
+              -17%
             </span>
           )}
         </button>
@@ -242,13 +242,13 @@ function BundleCard({ bundle, cycle }: { bundle: Bundle; cycle: BillingCycle }) 
 
       <div className="p-6 flex flex-col flex-1">
         {/* Header */}
-        <div className="flex items-center gap-4 mb-4 pr-32">
-          <div className="w-14 h-14 rounded-[14px] bg-violet-100 border border-violet-200 flex items-center justify-center text-violet-700 shrink-0">
+        <div className="flex flex-col sm:flex-row items-start gap-4 mb-4 sm:pr-32">
+          <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-[14px] bg-violet-100 border border-violet-200 flex items-center justify-center text-violet-700 shrink-0">
             <Layers size={26} />
           </div>
-          <div>
-            <h3 className="font-black text-xl leading-tight text-gray-900 m-0 mb-1.5">{bundle.name}</h3>
-            <span className="text-xs font-bold bg-violet-100 text-violet-700 px-2.5 py-0.5 rounded-md border border-violet-200 inline-block whitespace-nowrap">
+          <div className="min-w-0">
+            <h3 className="font-black text-lg sm:text-xl leading-tight text-gray-900 m-0 mb-1 truncate">{bundle.name}</h3>
+            <span className="text-[10px] sm:text-xs font-bold bg-violet-100 text-violet-700 px-2 sm:px-2.5 py-0.5 rounded-md border border-violet-200 inline-block whitespace-nowrap">
               {includedCount} Pro Apps Included
             </span>
           </div>
@@ -423,7 +423,7 @@ export default function DashboardPage() {
           <div className="absolute -bottom-10 -left-10 w-40 h-40 rounded-full bg-white/[0.06]" />
         </div>
 
-        <div className="relative z-10 px-10 py-9">
+        <div className="relative z-10 px-5 sm:px-10 py-7 sm:py-9">
           {/* Label */}
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 border border-white/20 text-[11px] font-bold uppercase tracking-widest text-white/90 mb-4">
             <Sparkles size={12} /> SaaS Marketplace
@@ -432,7 +432,7 @@ export default function DashboardPage() {
           {/* Two-column layout */}
           <div className="flex flex-wrap items-start justify-between gap-8">
             {/* Copy */}
-            <div className="flex-1 min-w-[300px]">
+            <div className="flex-1 min-w-full sm:min-w-[300px]">
               <h1 className="text-[clamp(22px,3.5vw,34px)] font-black leading-tight m-0 mb-2.5 text-white">
                 The Tools Your Business Deserves
               </h1>
@@ -453,7 +453,7 @@ export default function DashboardPage() {
             </div>
 
             {/* Right: Actions */}
-            <div className="shrink-0 flex flex-col gap-4 min-w-[260px]">
+            <div className="shrink-0 flex flex-col gap-4 w-full sm:w-auto sm:min-w-[260px]">
               {/* Billing toggle box */}
               <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-[14px] p-5 flex flex-col gap-3">
                 <p className="m-0 text-[11px] font-bold text-white/70 uppercase tracking-wider">Billing Cycle</p>
@@ -524,7 +524,7 @@ export default function DashboardPage() {
               <p className="m-0 text-[13px] text-gray-500">Get multiple SaaS tools together at one low price — the smarter way to subscribe.</p>
             </div>
           </div>
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6">
             {bundles.map((bundle) => (
               <BundleCard key={bundle.id} bundle={bundle} cycle={billingCycle} />
             ))}
@@ -545,13 +545,13 @@ export default function DashboardPage() {
               <p className="m-0 text-[13px] text-gray-500">Subscribe only to what you need, one tool at a time.</p>
             </div>
           </div>
-          <div className="relative w-60 shrink-0">
+          <div className="relative w-full sm:w-60 shrink-0">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             <Input
               placeholder="Search products..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-9 h-9 text-sm rounded-xl border-gray-200 focus-visible:ring-violet-400 focus-visible:ring-offset-0 bg-white"
+              className="pl-9 h-10 sm:h-9 text-sm rounded-xl border-gray-200 focus-visible:ring-violet-400 focus-visible:ring-offset-0 bg-white"
             />
           </div>
         </div>
@@ -623,7 +623,7 @@ export default function DashboardPage() {
                     {groupProducts.length} {groupProducts.length === 1 ? 'plan' : 'plans'}
                   </span>
                 </div>
-                <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 sm:gap-6">
                   {groupProducts.map((product) => (
                     <ProductCard key={product.id} product={product} cycle={billingCycle} />
                   ))}

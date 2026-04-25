@@ -1,23 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isAllowedRedirect } from "@/lib/domains";
 
 const PROTECTED_ROUTES = ["/profile", "/account", "/dashboard"];
 const AUTH_ROUTES = ["/login", "/signup", "/forgot-password", "/reset-password"];
 
-const ALLOWED_DOMAINS = ["localhost", "codeswayam.com"];
-
-function isAllowedRedirect(url: string): boolean {
-    if (url.startsWith("/")) return true;
-    try {
-        const parsed = new URL(url);
-        return ALLOWED_DOMAINS.some(
-            (d) => parsed.hostname === d || parsed.hostname.endsWith("." + d)
-        );
-    } catch {
-        return false;
-    }
-}
-
-export function middleware(req: NextRequest) {
+export async function middleware(req: NextRequest) {
     const { pathname } = req.nextUrl;
 
     const isProtected = PROTECTED_ROUTES.some((r) => pathname.startsWith(r));
@@ -37,7 +24,7 @@ export function middleware(req: NextRequest) {
     // honor the ?redirect param (e.g. from admin-panel or auraflow)
     if (isAuthRoute && isAuthenticated) {
         const redirectParam = req.nextUrl.searchParams.get("redirect");
-        if (redirectParam && isAllowedRedirect(redirectParam)) {
+        if (redirectParam && await isAllowedRedirect(redirectParam)) {
             return NextResponse.redirect(new URL(redirectParam));
         }
         const defaultRedirect =

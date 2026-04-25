@@ -10,7 +10,10 @@ import {
 import {
   fetchMyWallet, fetchCreditPacks, fetchFeatureCosts,
   createCreditPurchaseOrder, verifyCreditPurchase,
+  fetchReferralStats, type ReferralStats,
 } from "@/lib/api";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import type { CreditPack, CreditTransaction, FeatureCreditCost, UserCredits } from "@/lib/api";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -56,9 +59,26 @@ function loadRazorpay(): Promise<boolean> {
 
 // ─── Pack Card ────────────────────────────────────────────────────────────────
 
-function PackCard({ pack, onBuy, buying }: {
-  pack: CreditPack; onBuy: (pack: CreditPack) => void; buying: boolean;
+function PackCard({ pack, onBuy, buying, referralStats }: {
+  pack: CreditPack; onBuy: (pack: CreditPack, usePoints: boolean) => void; buying: boolean;
+  referralStats: ReferralStats | null;
 }) {
+  const [usePoints, setUsePoints] = useState(false);
+  
+  // --- Points Discount Calculation ---
+  const activePoints = referralStats?.points?.active || 0;
+  const pointsToCurrencyRate = 10; // 10 pts = 1 INR
+  const maxDiscountPercent = 30; // 30%
+
+  let ptsUsed = 0;
+  let discountAmount = 0;
+  if (usePoints && activePoints > 0) {
+    const maxDiscountAllowed = (pack.priceInr * maxDiscountPercent) / 100;
+    const pointsValueInCurrency = activePoints / pointsToCurrencyRate;
+    discountAmount = Math.min(maxDiscountAllowed, pointsValueInCurrency * 100);
+    ptsUsed = Math.ceil((discountAmount / 100) * pointsToCurrencyRate);
+  }
+
   const totalPts   = pack.points + (pack.bonusPoints ?? 0);
   const priceRs    = pack.priceInr / 100;
   const ptsPerRupee = (totalPts / priceRs).toFixed(1);
@@ -109,13 +129,53 @@ function PackCard({ pack, onBuy, buying }: {
 
       {/* Price */}
       <div className="flex items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5">
-        <span className="text-2xl font-black text-violet-600">{formatInr(pack.priceInr)}</span>
+        <div className="flex flex-col">
+          {usePoints && discountAmount > 0 && (
+            <span className="text-[10px] font-bold text-gray-400 line-through mb-[-2px]">
+              {formatInr(pack.priceInr)}
+            </span>
+          )}
+          <span className="text-2xl font-black text-violet-600">
+            {formatInr(usePoints ? Math.max(0, pack.priceInr - discountAmount) : pack.priceInr)}
+          </span>
+        </div>
         <span className="text-xs font-semibold text-gray-400">≈ {ptsPerRupee} pts/₹</span>
+      </div>
+
+      {/* Points Redemption Toggle */}
+      <div className={`rounded-xl border p-3 transition-colors ${
+        activePoints > 0 
+          ? "border-amber-200 bg-amber-50/50" 
+          : "border-gray-100 bg-gray-50/50 opacity-80"
+      }`}>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Star size={14} className={activePoints > 0 ? "text-amber-500" : "text-gray-400"} fill="currentColor" />
+            <span className="text-[11px] font-bold text-gray-700">Use Referral Points</span>
+          </div>
+          <Switch 
+            checked={usePoints} 
+            onCheckedChange={setUsePoints} 
+            className="scale-75 origin-right" 
+            disabled={activePoints <= 0}
+          />
+        </div>
+        {usePoints && activePoints > 0 && (
+          <div className="mt-2 pt-2 border-t border-amber-200/30 flex items-center justify-between text-[10px] font-bold text-amber-700">
+            <span>Applying {ptsUsed.toLocaleString()} points</span>
+            <span>-{formatInr(discountAmount)}</span>
+          </div>
+        )}
+        {activePoints <= 0 && (
+          <p className="mt-1.5 text-[9px] font-medium text-gray-400">
+            No active referral points to redeem.
+          </p>
+        )}
       </div>
 
       {/* CTA */}
       <button
-        onClick={() => onBuy(pack)}
+        onClick={() => onBuy(pack, usePoints)}
         disabled={buying}
         className={`flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm font-bold text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-60
           ${popular
@@ -147,18 +207,13 @@ function TxRow({ tx }: { tx: CreditTransaction }) {
       {/* Meta */}
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-semibold text-gray-900">{tx.description}</p>
-        <div className="mt-1 flex flex-wrap items-center gap-2">
-          <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${cfg.pill}`}>
+        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className={`rounded-full border px-1.5 py-0.5 text-[9px] font-bold ${cfg.pill}`}>
             {cfg.label}
           </span>
-          {tx.saasId && (
-            <span className="font-mono text-[11px] text-gray-400">
-              {tx.saasId}{tx.featureKey ? ` · ${tx.featureKey}` : ""}
-            </span>
-          )}
-          <span className="text-[11px] text-gray-400">
+          <span className="text-[10px] text-gray-400">
             {new Date(tx.createdAt).toLocaleDateString("en-IN", {
-              day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
+              day: "numeric", month: "short",
             })}
           </span>
         </div>
@@ -186,17 +241,19 @@ export default function CreditsPage() {
   const [buying,       setBuying]       = useState<number | null>(null);
   const [txFilter,     setTxFilter]     = useState("all");
   const [activeTab,    setActiveTab]    = useState<"buy" | "history" | "features">("buy");
+  const [referralStats, setReferralStats] = useState<ReferralStats | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [walletRes, packsRes, featuresRes] = await Promise.all([
-        fetchMyWallet(), fetchCreditPacks(), fetchFeatureCosts(),
+      const [walletRes, packsRes, featuresRes, refRes] = await Promise.all([
+        fetchMyWallet(), fetchCreditPacks(), fetchFeatureCosts(), fetchReferralStats().catch(() => null)
       ]);
       setWallet(walletRes.wallet);
       setTransactions(walletRes.transactions);
       setPacks(packsRes);
       setFeatures(featuresRes);
+      setReferralStats(refRes);
     } catch (err: any) {
       toast.error(err.message || "Failed to load credits");
     } finally {
@@ -206,12 +263,12 @@ export default function CreditsPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const handleBuy = async (pack: CreditPack) => {
+  const handleBuy = async (pack: CreditPack, usePoints = false) => {
     setBuying(pack.id);
     try {
       const loaded = await loadRazorpay();
       if (!loaded) { toast.error("Payment gateway failed to load."); return; }
-      const order = await createCreditPurchaseOrder(pack.id, "INR");
+      const order = await createCreditPurchaseOrder(pack.id, "INR", usePoints);
       await new Promise<void>((resolve, reject) => {
         const rzp = new (window as any).Razorpay({
           key: order.keyId, amount: order.amount,
@@ -226,6 +283,7 @@ export default function CreditsPage() {
                 razorpay_order_id:    response.razorpay_order_id,
                 razorpay_payment_id:  response.razorpay_payment_id,
                 razorpay_signature:   response.razorpay_signature,
+                pointsUsed:           (order as any).pointsUsed,
               });
               toast.success(`✅ ${result.pointsAdded.toLocaleString()} credits added!`);
               await load();
@@ -282,33 +340,33 @@ export default function CreditsPage() {
           <Coins size={160} />
         </div>
 
-        <div className="relative flex flex-wrap items-center justify-between gap-6">
+        <div className="relative flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
           {/* Balance */}
           <div>
             <p className="mb-1.5 text-xs font-bold uppercase tracking-widest opacity-75">Credit Balance</p>
             <div className="flex items-baseline gap-2.5">
-              <span className="text-5xl font-black leading-none">{balance.toLocaleString()}</span>
-              <span className="text-xl font-semibold opacity-75">pts</span>
+              <span className="text-4xl sm:text-5xl font-black leading-none">{balance.toLocaleString()}</span>
+              <span className="text-lg sm:text-xl font-semibold opacity-75">pts</span>
             </div>
             {wallet && (
-              <p className="mt-2 text-sm opacity-70">
-                Lifetime earned: <strong>{wallet.lifetimeEarned.toLocaleString()}</strong>
-                {" · "}Spent: <strong>{wallet.lifetimeSpent.toLocaleString()}</strong>
+              <p className="mt-2 text-xs sm:text-sm opacity-70">
+                Lifetime: <strong>{wallet.lifetimeEarned.toLocaleString()}</strong>
+                {" · "}Used: <strong>{wallet.lifetimeSpent.toLocaleString()}</strong>
               </p>
             )}
           </div>
 
           {/* Stat pills */}
-          <div className="flex flex-wrap gap-3">
+          <div className="grid grid-cols-2 gap-2 w-full sm:w-auto sm:flex sm:flex-wrap">
             {[
-              { label: "Total Earned", value: wallet?.lifetimeEarned ?? 0, icon: <ArrowDownRight size={14} /> },
-              { label: "Total Used",   value: wallet?.lifetimeSpent  ?? 0, icon: <ArrowUpRight   size={14} /> },
+              { label: "Earned", value: wallet?.lifetimeEarned ?? 0, icon: <ArrowDownRight size={14} /> },
+              { label: "Used",   value: wallet?.lifetimeSpent  ?? 0, icon: <ArrowUpRight   size={14} /> },
             ].map(({ label, value, icon }) => (
-              <div key={label} className="min-w-[110px] rounded-xl border border-white/20 bg-white/10 px-4 py-3 backdrop-blur-sm">
-                <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold opacity-75">
+              <div key={label} className="rounded-xl border border-white/20 bg-white/10 px-3 sm:px-4 py-2.5 sm:py-3 backdrop-blur-sm">
+                <div className="mb-1 flex items-center gap-1.5 text-[10px] sm:text-[11px] font-semibold opacity-75">
                   {icon} {label}
                 </div>
-                <p className="text-xl font-black">{value.toLocaleString()}</p>
+                <p className="text-lg sm:text-xl font-black">{value.toLocaleString()}</p>
               </div>
             ))}
           </div>
@@ -316,19 +374,21 @@ export default function CreditsPage() {
       </div>
 
       {/* ── Tabs ─────────────────────────────────────────────────────── */}
-      <div className="flex gap-1 border-b border-gray-200">
-        {TABS.map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`-mb-px flex items-center gap-1.5 rounded-t-lg border-b-2 px-4 py-2.5 text-sm font-semibold transition-colors
-              ${activeTab === tab.id
-                ? "border-violet-600 text-violet-600"
-                : "border-transparent text-gray-500 hover:text-gray-700"}`}
-          >
-            {tab.icon} {tab.label}
-          </button>
-        ))}
+      <div className="flex gap-1 border-b border-gray-200 overflow-x-auto no-scrollbar scroll-smooth">
+        <div className="flex min-w-max">
+          {TABS.map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`-mb-px flex items-center gap-1.5 border-b-2 px-4 py-2.5 text-[13px] sm:text-sm font-semibold transition-colors whitespace-nowrap
+                ${activeTab === tab.id
+                  ? "border-violet-600 text-violet-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700"}`}
+            >
+              {tab.icon} {tab.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* ── Tab: Buy Credits ─────────────────────────────────────────── */}
@@ -342,7 +402,7 @@ export default function CreditsPage() {
           ) : (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {packs.map(pack => (
-                <PackCard key={pack.id} pack={pack} onBuy={handleBuy} buying={buying === pack.id} />
+                <PackCard key={pack.id} pack={pack} onBuy={handleBuy} buying={buying === pack.id} referralStats={referralStats} />
               ))}
             </div>
           )}

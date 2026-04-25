@@ -59,6 +59,8 @@ export interface RazorpayButtonProps {
   onSuccess?: () => void;
   /** Called on payment failure */
   onError?: (error: string) => void;
+  /** Use referral points for discount */
+  usePoints?: boolean;
 }
 
 // ─── Component ─────────────────────────────────────────────────────────────────
@@ -77,6 +79,7 @@ export function RazorpayButton({
   icon,
   onSuccess,
   onError,
+  usePoints = false,
 }: RazorpayButtonProps) {
   const [loading, setLoading] = useState(false);
 
@@ -110,6 +113,7 @@ export function RazorpayButton({
         bundleId,
         billingCycle,
         currency,
+        usePoints,
       });
 
       // Free-tier shortcut — backend may return { free: true }
@@ -157,6 +161,7 @@ export function RazorpayButton({
               billingCycle,
               currency,
               amount: orderData.amount,
+              pointsUsed: (orderData as any).pointsUsed,
             });
 
             toast.success(`🎉 Subscribed to ${planName}!`);
@@ -187,7 +192,7 @@ export function RazorpayButton({
     }
   }, [
     loading, saasProductId, bundleId, billingCycle, currency,
-    planName, onSuccess, onError,
+    planName, onSuccess, onError, usePoints,
   ]);
 
   return (
