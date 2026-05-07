@@ -2,10 +2,50 @@
 > codeswayam-auth@0.1.0 build
 > next build
 
-▲ Next.js 16.1.6 (Turbopack)
+▲ Next.js 16.2.4 (Turbopack)
 - Environments: .env.local, .env.production
 
 ⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
   Creating an optimized production build ...
-✓ Compiled successfully in 22.4s
+✓ Compiled successfully in 27.4s
   Running TypeScript ...
+  Finished TypeScript in 28.9s ...
+  Collecting page data using 7 workers ...
+  Generating static pages using 7 workers (0/24) ...
+  Generating static pages using 7 workers (6/24) 
+  Generating static pages using 7 workers (12/24) 
+  Generating static pages using 7 workers (18/24) 
+✓ Generating static pages using 7 workers (24/24) in 2.2s
+  Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ○ /account
+├ ○ /account/admin/domains
+├ ○ /account/admin/referrals
+├ ○ /account/admin/security
+├ ○ /account/billing
+├ ○ /account/credits
+├ ○ /account/preferences
+├ ○ /account/profile
+├ ○ /account/referrals
+├ ○ /account/security
+├ ○ /account/subscriptions
+├ ○ /dashboard
+├ ○ /forgot-password
+├ ƒ /invoices/[id]
+├ ○ /login
+├ ○ /profile
+├ ○ /profile/security
+├ ○ /profile/subscription
+├ ○ /reset-password
+├ ○ /signup
+└ ○ /sso
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

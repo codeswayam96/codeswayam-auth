@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { isAllowedRedirect } from "@/lib/domains";
 
 const PROTECTED_ROUTES = ["/profile", "/account", "/dashboard"];
-const AUTH_ROUTES = ["/login", "/signup", "/forgot-password", "/reset-password"];
+
+// Auth routes + SSO must be excluded from the auth-gate to prevent loops.
+// /sso is the central redirect handler — it must never be intercepted.
+const AUTH_ROUTES = ["/login", "/signup", "/forgot-password", "/reset-password", "/sso"];
 
 export async function middleware(req: NextRequest) {
     const { pathname } = req.nextUrl;
@@ -14,19 +17,43 @@ export async function middleware(req: NextRequest) {
     const authCookie = req.cookies.get("Authentication") || req.cookies.get("__session");
     const isAuthenticated = Boolean(authCookie?.value);
 
+    // ── Protect guarded routes ──────────────────────────────────────────────
     if (isProtected && !isAuthenticated) {
         const loginUrl = new URL("/login", req.url);
         loginUrl.searchParams.set("redirect", req.url);
         return NextResponse.redirect(loginUrl);
     }
 
-    // If user is already authenticated and visits an auth route,
-    // honor the ?redirect param (e.g. from admin-panel or auraflow)
+    // ── Handle auth routes (user already authenticated) ─────────────────────
     if (isAuthRoute && isAuthenticated) {
-        const redirectParam = req.nextUrl.searchParams.get("redirect");
-        if (redirectParam && await isAllowedRedirect(redirectParam)) {
-            return NextResponse.redirect(new URL(redirectParam));
+        // /sso is special — it ALWAYS processes regardless of auth state.
+        // It needs to be reachable even when authenticated so it can issue tickets.
+        if (pathname.startsWith("/sso")) {
+            return NextResponse.next();
         }
+
+        const redirectParam = req.nextUrl.searchParams.get("redirect");
+
+        if (redirectParam) {
+            // ── Loop guard ─────────────────────────────────────────────────
+            // If the redirect target is our own auth domain, don't follow it —
+            // it means a double-encoded redirect sneaked through. Fall through
+            // to the default redirect instead.
+            const authHost = req.nextUrl.hostname; // e.g. auth.codeswayam.com
+            try {
+                const redirectHost = new URL(redirectParam).hostname;
+                if (redirectHost === authHost) {
+                    // Strip the bogus self-referential redirect
+                    console.warn("[CSW Auth] Loop-guard triggered: redirect points to own domain, using default.");
+                } else if (await isAllowedRedirect(redirectParam)) {
+                    return NextResponse.redirect(new URL(redirectParam));
+                }
+            } catch {
+                // Invalid URL in redirect param — ignore it
+            }
+        }
+
+        // Default: send to main platform or local dashboard
         const defaultRedirect =
             process.env.NEXT_PUBLIC_DEFAULT_REDIRECT ||
             (process.env.NODE_ENV === "production"
@@ -39,5 +66,14 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-    matcher: ["/profile/:path*", "/account/:path*", "/dashboard/:path*", "/login", "/signup", "/forgot-password", "/reset-password"],
+    matcher: [
+        "/profile/:path*",
+        "/account/:path*",
+        "/dashboard/:path*",
+        "/login",
+        "/signup",
+        "/forgot-password",
+        "/reset-password",
+        "/sso",
+    ],
 };

@@ -10,66 +10,93 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 function SSOHandler() {
     const searchParams = useSearchParams();
     const router = useRouter();
-    
+
+    // The URL that the client app wants to be redirected to AFTER SSO completes.
+    // This is typically the /auth/callback page on the client app.
     const redirectUrl = searchParams.get("redirect") || searchParams.get("redirect_url");
 
     useEffect(() => {
         const handleSSO = async () => {
+            // ── No redirect target: just go to account dashboard ────────────
             if (!redirectUrl) {
                 router.push("/dashboard");
                 return;
             }
 
-            // 1. Verify redirect is allowed
+            // ── Security: validate redirect is a trusted domain ──────────────
             const allowed = await isAllowedRedirect(redirectUrl);
             if (!allowed) {
-                console.error("SSO blocked: Domain not trusted", redirectUrl);
+                console.error("[CSW SSO] Blocked redirect to untrusted domain:", redirectUrl);
                 router.push("/dashboard");
                 return;
             }
 
             try {
-                // 2. Check session and get SSO ticket from API
-                // We use credentials: "include" to send the Authentication cookie
+                // ── Try to get an SSO ticket for the current session ─────────
+                // We send credentials:include for same-domain (cookie) auth,
+                // AND inject the stored Bearer token for cross-domain (localStorage) auth.
+                const storedToken = typeof window !== "undefined"
+                    ? localStorage.getItem("csw_token")
+                    : null;
+
                 const res = await fetch(`${API_URL}/auth/sso/ticket`, {
                     method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({}), 
+                    headers: {
+                        "Content-Type": "application/json",
+                        // Inject Bearer token for cross-domain scenarios
+                        // (e.g. this auth page is on auth.codeswayam.com but the
+                        //  user's JWT came from a localStorage-based login)
+                        ...(storedToken ? { Authorization: `Bearer ${storedToken}` } : {}),
+                    },
+                    body: JSON.stringify({}),
                     credentials: "include",
                 });
 
                 if (res.ok) {
                     const { ticket } = await res.json();
-                    console.log("SSO Ticket acquired, redirecting...");
-                    
-                    // 3. Redirect back to client with ticket
+                    console.log("[CSW SSO] Ticket acquired, redirecting to client.");
+
+                    // Redirect back to the client app with the ticket.
+                    // The client's /auth/callback page will exchange this ticket for a JWT.
                     const target = new URL(redirectUrl);
                     target.searchParams.set("sso_ticket", ticket);
                     window.location.href = target.toString();
+
                 } else {
-                    console.warn("SSO Session invalid, redirecting to login");
-                    // Not logged in or session expired
+                    // ── Not authenticated: redirect to login ─────────────────
+                    // CRITICAL: pass the FULL current SSO URL (including ?redirect=...)
+                    // as the `redirect` param to login. After login, the user comes back
+                    // to this exact URL, and the SSO flow continues seamlessly.
+                    console.warn("[CSW SSO] No active session. Redirecting to login.");
+
                     const loginUrl = new URL("/login", window.location.origin);
+                    // The redirect target for login is THIS page (with its redirect param),
+                    // so after login the user is brought back here to get a ticket.
                     loginUrl.searchParams.set("redirect", window.location.href);
-                    router.push(loginUrl.toString());
+                    window.location.href = loginUrl.toString();
                 }
             } catch (error) {
-                console.error("SSO Handshake failed:", error);
+                console.error("[CSW SSO] Handshake failed:", error);
+
+                // Same fallback: send to login, preserving the redirect chain
                 const loginUrl = new URL("/login", window.location.origin);
                 loginUrl.searchParams.set("redirect", window.location.href);
-                router.push(loginUrl.toString());
+                window.location.href = loginUrl.toString();
             }
         };
 
         handleSSO();
-    }, [redirectUrl, router]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [redirectUrl]);
 
     return (
-        <div className="flex min-h-screen flex-col items-center justify-center p-4">
+        <div className="flex min-h-screen flex-col items-center justify-center p-4 bg-background">
             <div className="text-center space-y-4">
                 <Loader2 className="w-10 h-10 animate-spin text-primary mx-auto" />
                 <h1 className="text-xl font-semibold">Authorizing...</h1>
-                <p className="text-muted-foreground text-sm">Transferring your session safely.</p>
+                <p className="text-muted-foreground text-sm">
+                    Securely transferring your session.
+                </p>
             </div>
         </div>
     );
@@ -77,7 +104,13 @@ function SSOHandler() {
 
 export default function SSOPage() {
     return (
-        <Suspense fallback={<div>Loading...</div>}>
+        <Suspense
+            fallback={
+                <div className="flex min-h-screen items-center justify-center">
+                    <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                </div>
+            }
+        >
             <SSOHandler />
         </Suspense>
     );
