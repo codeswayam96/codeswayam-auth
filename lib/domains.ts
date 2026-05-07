@@ -11,11 +11,20 @@
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 
+interface DomainConfig {
+    domain: string;
+    allowSubdomains: boolean;
+}
+
 // These domains are always trusted — they don't need a DB entry.
 // Wildcards like "localhost" match any localhost:<port> pattern.
-const HARDCODED_TRUSTED: string[] = ["localhost", "codeswayam.com"];
+const HARDCODED_TRUSTED: DomainConfig[] = [
+    { domain: "localhost", allowSubdomains: true },
+    { domain: "codeswayam.com", allowSubdomains: true },
+    { domain: "vercel.app", allowSubdomains: true }
+];
 
-let cachedDomains: string[] = [...HARDCODED_TRUSTED];
+let cachedDomains: DomainConfig[] = [...HARDCODED_TRUSTED];
 let lastFetch = 0;
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
@@ -24,7 +33,7 @@ const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
  * Results are cached for 5 minutes to avoid hammering the API.
  * Always includes localhost and *.codeswayam.com as hardcoded defaults.
  */
-export async function getTrustedDomains(): Promise<string[]> {
+export async function getTrustedDomains(): Promise<DomainConfig[]> {
     const now = Date.now();
 
     // Return cache if still fresh
@@ -38,10 +47,27 @@ export async function getTrustedDomains(): Promise<string[]> {
         });
 
         if (res.ok) {
-            const domains: { domain: string }[] = await res.json();
-            // Merge hardcoded + DB domains, deduplicate
-            const dbDomains = domains.map((d) => d.domain);
-            cachedDomains = [...new Set([...HARDCODED_TRUSTED, ...dbDomains])];
+            const domains: { domain: string; allowSubdomains?: boolean }[] = await res.json();
+            // Extract clean hostnames from the DB (handles 'https://domain.com', 'localhost:3000', or just 'domain.com')
+            const dbDomains: DomainConfig[] = domains.map((d) => {
+                let parsedDomain = d.domain;
+                try {
+                    const urlString = d.domain.startsWith("http") ? d.domain : `https://${d.domain}`;
+                    parsedDomain = new URL(urlString).hostname;
+                } catch {
+                    // fallback
+                }
+                return {
+                    domain: parsedDomain,
+                    allowSubdomains: d.allowSubdomains ?? true,
+                };
+            });
+            
+            // Deduplicate based on domain
+            const allDomains = [...HARDCODED_TRUSTED, ...dbDomains];
+            const uniqueDomains = Array.from(new Map(allDomains.map(item => [item.domain, item])).values());
+            
+            cachedDomains = uniqueDomains;
             lastFetch = now;
         }
     } catch (error) {
@@ -73,13 +99,13 @@ export async function isAllowedRedirect(url: string): Promise<boolean> {
 
         return allowedDomains.some((trusted) => {
             // Case 1: Exact match (e.g. "auraflow.com" === "auraflow.com")
-            if (hostname === trusted) return true;
+            if (hostname === trusted.domain) return true;
 
             // Case 2: "localhost" in trusted list → allow any localhost:<port>
-            if (trusted === "localhost" && hostname === "localhost") return true;
+            if (trusted.domain === "localhost" && hostname === "localhost") return true;
 
-            // Case 3: Subdomain match (e.g. trusted="codeswayam.com" → allows "ems.codeswayam.com")
-            if (hostname.endsWith("." + trusted)) return true;
+            // Case 3: Subdomain match (only if explicitly allowed for this domain)
+            if (trusted.allowSubdomains && hostname.endsWith("." + trusted.domain)) return true;
 
             return false;
         });

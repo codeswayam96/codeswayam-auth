@@ -29,6 +29,7 @@ interface TrustedDomain {
     domain: string;
     appName: string | null;
     isActive: boolean;
+    allowSubdomains: boolean;
     createdAt: string;
 }
 
@@ -37,6 +38,7 @@ export default function AdminDomainsPage() {
     const [loading, setLoading] = useState(true);
     const [newDomain, setNewDomain] = useState("");
     const [newAppName, setNewAppName] = useState("");
+    const [allowSubdomains, setAllowSubdomains] = useState(true);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     useEffect(() => {
@@ -63,12 +65,22 @@ export default function AdminDomainsPage() {
         e.preventDefault();
         if (!newDomain) return;
 
+        // Sanitize the domain: strip protocols (http://, https://), paths, and ports
+        // This ensures only the raw hostname (e.g., "auraflow.com") gets saved to the database.
+        let sanitizedDomain = newDomain.trim().toLowerCase();
+        try {
+            const urlString = sanitizedDomain.startsWith("http") ? sanitizedDomain : `https://${sanitizedDomain}`;
+            sanitizedDomain = new URL(urlString).hostname;
+        } catch {
+            // Fallback if parsing fails, but trim and lowercase are already applied
+        }
+
         setIsSubmitting(true);
         try {
             const res = await fetch(`${API_URL}/admin/auth/domains`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ domain: newDomain, appName: newAppName }),
+                body: JSON.stringify({ domain: sanitizedDomain, appName: newAppName, allowSubdomains }),
                 credentials: "include",
             });
 
@@ -76,6 +88,7 @@ export default function AdminDomainsPage() {
                 toast.success("Domain added successfully");
                 setNewDomain("");
                 setNewAppName("");
+                setAllowSubdomains(true);
                 fetchDomains();
             } else {
                 const error = await res.json();
@@ -140,7 +153,38 @@ export default function AdminDomainsPage() {
                                     onChange={(e) => setNewAppName(e.target.value)}
                                 />
                             </div>
-                            <Button type="submit" className="w-full" disabled={isSubmitting}>
+                            <div className="space-y-3 pt-2">
+                                <Label>Security Match Policy</Label>
+                                <div className="space-y-2">
+                                    <label className="flex items-start gap-3 p-3 border rounded-lg cursor-pointer hover:bg-muted/50 transition-colors">
+                                        <input 
+                                            type="radio" 
+                                            name="allowSubdomains" 
+                                            className="mt-1"
+                                            checked={allowSubdomains === true}
+                                            onChange={() => setAllowSubdomains(true)}
+                                        />
+                                        <div>
+                                            <p className="font-medium text-sm leading-none">Complete Whitelist (Include Subdomains)</p>
+                                            <p className="text-xs text-muted-foreground mt-1">Allows {newDomain ? `*.${newDomain}` : "*.domain.com"} and {newDomain || "domain.com"}</p>
+                                        </div>
+                                    </label>
+                                    <label className="flex items-start gap-3 p-3 border rounded-lg cursor-pointer hover:bg-muted/50 transition-colors">
+                                        <input 
+                                            type="radio" 
+                                            name="allowSubdomains" 
+                                            className="mt-1"
+                                            checked={allowSubdomains === false}
+                                            onChange={() => setAllowSubdomains(false)}
+                                        />
+                                        <div>
+                                            <p className="font-medium text-sm leading-none">Strict Whitelist (Exact Match Only)</p>
+                                            <p className="text-xs text-muted-foreground mt-1">Only allows strictly {newDomain || "domain.com"}</p>
+                                        </div>
+                                    </label>
+                                </div>
+                            </div>
+                            <Button type="submit" className="w-full mt-2" disabled={isSubmitting}>
                                 {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
                                 Add Trusted Domain
                             </Button>
@@ -195,8 +239,13 @@ export default function AdminDomainsPage() {
                                             <Globe size={18} />
                                         </div>
                                         <div>
-                                            <p className="font-semibold text-sm">{d.domain}</p>
-                                            <p className="text-xs text-muted-foreground">{d.appName || "Unnamed App"}</p>
+                                            <div className="flex items-center gap-2">
+                                                <p className="font-semibold text-sm">{d.domain}</p>
+                                                <span className={`text-[10px] px-2 py-0.5 rounded-full ${d.allowSubdomains ? 'bg-emerald-500/10 text-emerald-500' : 'bg-amber-500/10 text-amber-500'}`}>
+                                                    {d.allowSubdomains ? 'Includes Subdomains' : 'Strict Match'}
+                                                </span>
+                                            </div>
+                                            <p className="text-xs text-muted-foreground mt-0.5">{d.appName || "Unnamed App"}</p>
                                         </div>
                                     </div>
                                     <Button 
