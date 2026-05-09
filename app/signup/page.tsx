@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Loader2, Zap, Eye, EyeOff, AlertCircle, MailCheck } from "lucide-react";
 import { checkUserAuth, isAllowedRedirect } from "@/lib/auth-redirect";
+import { resolveSignupSource } from "@/lib/signup-source";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 
@@ -187,8 +188,10 @@ function EmailVerificationPending({
 
 function SignupForm({
     redirectUrl,
+    signupSource,
 }: {
     redirectUrl: string;
+    signupSource?: string;
 }) {
     const [name, setName] = useState("");
     const [email, setEmail] = useState("");
@@ -206,7 +209,7 @@ function SignupForm({
             const res = await fetch(`${API_URL}/auth/google`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ token: credentialResponse.credential }),
+                body: JSON.stringify({ token: credentialResponse.credential, signupSource }),
                 credentials: "include",
             });
 
@@ -232,7 +235,7 @@ function SignupForm({
             const res = await fetch(`${API_URL}/auth/signup`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ name, email, password, referralCode: referralCode || undefined }),
+                body: JSON.stringify({ name, email, password, referralCode: referralCode || undefined, signupSource }),
                 credentials: "include",
             });
 
@@ -417,6 +420,7 @@ function SignupPageInner() {
     }
 
     const redirectUrl = getRedirectUrl();
+    const signupSource = resolveSignupSource(searchParams);
 
     return (
         <div className="flex min-h-screen flex-col items-center justify-center p-4 bg-background">
@@ -434,7 +438,7 @@ function SignupPageInner() {
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
-                    <SignupForm redirectUrl={redirectUrl} />
+                    <SignupForm redirectUrl={redirectUrl} signupSource={signupSource} />
                 </CardContent>
                 <CardFooter className="justify-center">
                     <p className="text-sm text-muted-foreground">

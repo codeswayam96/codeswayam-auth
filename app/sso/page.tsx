@@ -7,6 +7,11 @@ import { isAllowedRedirect } from "@/lib/domains";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 
+// Guard: API_URL must be http/https — prevents SSRF via env misconfiguration
+if (API_URL && !API_URL.startsWith("http://") && !API_URL.startsWith("https://")) {
+    throw new Error(`[CSW SSO] Invalid NEXT_PUBLIC_API_URL: ${API_URL}`);
+}
+
 function SSOHandler() {
     const searchParams = useSearchParams();
     const router = useRouter();
@@ -70,17 +75,15 @@ function SSOHandler() {
                     console.warn("[CSW SSO] No active session. Redirecting to login.");
 
                     const loginUrl = new URL("/login", window.location.origin);
-                    // The redirect target for login is THIS page (with its redirect param),
-                    // so after login the user is brought back here to get a ticket.
-                    loginUrl.searchParams.set("redirect", window.location.href);
+                    // Pass only the current SSO path (not full URL) to avoid redirect chain abuse
+                    loginUrl.searchParams.set("redirect", window.location.pathname + window.location.search);
                     window.location.href = loginUrl.toString();
                 }
             } catch (error) {
                 console.error("[CSW SSO] Handshake failed:", error);
 
-                // Same fallback: send to login, preserving the redirect chain
                 const loginUrl = new URL("/login", window.location.origin);
-                loginUrl.searchParams.set("redirect", window.location.href);
+                loginUrl.searchParams.set("redirect", window.location.pathname + window.location.search);
                 window.location.href = loginUrl.toString();
             }
         };

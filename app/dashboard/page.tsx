@@ -16,6 +16,7 @@ import { RazorpayButton } from "@/components/razorpay-checkout";
 interface SaaSProduct {
   id: string;
   saasId: string;
+  productFamily: string;
   name: string;
   description: string;
   category: string;
@@ -361,7 +362,9 @@ export default function DashboardPage() {
       try {
         const data = await fetchPublicPlans();
         const mappedProducts: SaaSProduct[] = (data.products || []).map((p: any) => ({
-          id: p.id.toString(), saasId: p.saasId, name: p.name,
+          id: p.id.toString(), saasId: p.saasId,
+          productFamily: p.productFamily || p.saasId,
+          name: p.name,
           description: p.description || "Powerful SaaS product",
           category: p.tag || "Productivity",
           monthlyInr: p.pricing?.INR?.monthly ?? p.monthlyPriceInr ?? 0,
@@ -395,11 +398,11 @@ export default function DashboardPage() {
     const matchesSearch =
       p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       p.description.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = !filterCategory || p.category === filterCategory;
+    const matchesCategory = !filterCategory || p.productFamily === filterCategory;
     return matchesSearch && matchesCategory;
   });
 
-  const categories = Array.from(new Set(products.map((p) => p.category)));
+  const categories = Array.from(new Set(products.map((p) => p.productFamily)));
 
   if (loading) {
     return (
@@ -564,7 +567,7 @@ export default function DashboardPage() {
               const label =
                 cat === null
                   ? `All (${products.length})`
-                  : `${cat} (${products.filter((p) => p.category === cat).length})`;
+                  : `${cat} (${products.filter((p) => p.productFamily === cat).length})`;
               return (
                 <button
                   key={cat ?? "__all__"}
@@ -607,7 +610,7 @@ export default function DashboardPage() {
           <div className="space-y-10">
             {Object.entries(
               filteredProducts.reduce((acc, p) => {
-                const tag = p.category || "Uncategorized";
+                const tag = p.productFamily || p.category || "Uncategorized";
                 if (!acc[tag]) acc[tag] = [];
                 acc[tag].push(p);
                 return acc;

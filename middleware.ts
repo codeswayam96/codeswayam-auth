@@ -1,6 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isAllowedRedirect } from "@/lib/domains";
 
+/** Strip any protocol/host from a URL — returns only the path+query+hash */
+function toSafeRelative(url: string): string {
+    try {
+        const parsed = new URL(url);
+        return parsed.pathname + parsed.search + parsed.hash;
+    } catch {
+        return "/";
+    }
+}
+
 const PROTECTED_ROUTES = ["/profile", "/account", "/dashboard"];
 
 // Auth routes + SSO must be excluded from the auth-gate to prevent loops.
@@ -20,7 +30,8 @@ export async function middleware(req: NextRequest) {
     // ── Protect guarded routes ──────────────────────────────────────────────
     if (isProtected && !isAuthenticated) {
         const loginUrl = new URL("/login", req.url);
-        loginUrl.searchParams.set("redirect", req.url);
+        // Only pass the relative path — never the full URL — to prevent open redirect
+        loginUrl.searchParams.set("redirect", toSafeRelative(req.url));
         return NextResponse.redirect(loginUrl);
     }
 
@@ -35,15 +46,19 @@ export async function middleware(req: NextRequest) {
         const redirectParam = req.nextUrl.searchParams.get("redirect");
 
         if (redirectParam) {
+            // Relative paths are always safe — redirect directly
+            if (redirectParam.startsWith("/")) {
+                return NextResponse.redirect(new URL(redirectParam, req.url));
+            }
+
             // ── Loop guard ─────────────────────────────────────────────────
             // If the redirect target is our own auth domain, don't follow it —
             // it means a double-encoded redirect sneaked through. Fall through
             // to the default redirect instead.
-            const authHost = req.nextUrl.hostname; // e.g. auth.codeswayam.com
+            const authHost = req.nextUrl.hostname;
             try {
                 const redirectHost = new URL(redirectParam).hostname;
                 if (redirectHost === authHost) {
-                    // Strip the bogus self-referential redirect
                     console.warn("[CSW Auth] Loop-guard triggered: redirect points to own domain, using default.");
                 } else if (await isAllowedRedirect(redirectParam)) {
                     return NextResponse.redirect(new URL(redirectParam));

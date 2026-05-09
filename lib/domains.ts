@@ -11,6 +11,14 @@
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 
+// Validate API_URL is http/https only — prevents SSRF via env misconfiguration
+if (API_URL && !API_URL.startsWith("http://") && !API_URL.startsWith("https://")) {
+    throw new Error(`[CSW Auth] Invalid NEXT_PUBLIC_API_URL: must start with http:// or https://`);
+}
+
+// Removed vercel.app from hardcoded trusted — too broad (any attacker can host there).
+// Add specific vercel preview URLs via the admin trusted_domains panel instead.
+
 interface DomainConfig {
     domain: string;
     allowSubdomains: boolean;
@@ -21,7 +29,7 @@ interface DomainConfig {
 const HARDCODED_TRUSTED: DomainConfig[] = [
     { domain: "localhost", allowSubdomains: true },
     { domain: "codeswayam.com", allowSubdomains: true },
-    { domain: "vercel.app", allowSubdomains: true }
+    // vercel.app intentionally removed — too broad; add specific preview URLs via admin panel
 ];
 
 let cachedDomains: DomainConfig[] = [...HARDCODED_TRUSTED];
@@ -91,6 +99,9 @@ export async function getTrustedDomains(): Promise<DomainConfig[]> {
 export async function isAllowedRedirect(url: string): Promise<boolean> {
     // Relative paths are always safe
     if (url.startsWith("/")) return true;
+
+    // Block non-http(s) protocols (javascript:, data:, etc.)
+    if (!url.startsWith("http://") && !url.startsWith("https://")) return false;
 
     try {
         const parsed = new URL(url);
