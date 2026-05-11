@@ -141,6 +141,12 @@ export default function BillingPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  // Pagination
+  const [invPage, setInvPage] = useState(1);
+  const INV_PAGE_SIZE = 10;
+  const invTotalPages = Math.max(1, Math.ceil(invoices.length / INV_PAGE_SIZE));
+  const pagedInvoices = invoices.slice((invPage - 1) * INV_PAGE_SIZE, invPage * INV_PAGE_SIZE);
+
   useEffect(() => {
     Promise.all([fetchBillingOverview(), fetchUserInvoices()])
       .then(([ov, inv]) => {
@@ -252,9 +258,25 @@ export default function BillingPage() {
         <CardContent>
           {invoices.length > 0 ? (
             <div className="space-y-2">
-              {invoices.map((invoice) => (
+              {pagedInvoices.map((invoice) => (
                 <InvoiceRow key={invoice.id} invoice={invoice} />
               ))}
+              {invTotalPages > 1 && (
+                <div className="flex items-center justify-between pt-3 border-t text-xs text-muted-foreground">
+                  <span>{(invPage - 1) * INV_PAGE_SIZE + 1}–{Math.min(invPage * INV_PAGE_SIZE, invoices.length)} of {invoices.length} invoices</span>
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => setInvPage(p => Math.max(1, p - 1))} disabled={invPage === 1}
+                      className="h-7 w-7 flex items-center justify-center rounded border disabled:opacity-40 hover:bg-muted">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 18l-6-6 6-6"/></svg>
+                    </button>
+                    <span className="px-2">{invPage} / {invTotalPages}</span>
+                    <button onClick={() => setInvPage(p => Math.min(invTotalPages, p + 1))} disabled={invPage === invTotalPages}
+                      className="h-7 w-7 flex items-center justify-center rounded border disabled:opacity-40 hover:bg-muted">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18l6-6-6-6"/></svg>
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <div className="text-center py-12">

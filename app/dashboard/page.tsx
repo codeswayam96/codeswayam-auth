@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import {
   Loader2, AlertCircle, Package, Search, Layers, Zap,
   Star, TrendingDown, Crown, Sparkles, ArrowRight,
@@ -114,7 +115,7 @@ function StatusBadge({ status }: { status: string }) {
 
 // ─── Product Card ─────────────────────────────────────────────────────────────
 
-function ProductCard({ product, cycle }: { product: SaaSProduct; cycle: BillingCycle }) {
+function ProductCard({ product, cycle, redirectAfterPayment }: { product: SaaSProduct; cycle: BillingCycle; redirectAfterPayment: string }) {
   const price = cycle === "yearly" ? product.yearlyInr : product.monthlyInr;
   const isComingSoon = product.status === "coming_soon";
   const isFree = price === 0;
@@ -217,7 +218,8 @@ function ProductCard({ product, cycle }: { product: SaaSProduct; cycle: BillingC
               fullWidth
               size="default"
               className="w-full font-semibold rounded-lg h-10"
-              onSuccess={() => (window.location.href = "/account/subscriptions")}
+              returnUrl={redirectAfterPayment}
+              onSuccess={() => (window.location.href = redirectAfterPayment)}
             />
           )}
         </div>
@@ -228,7 +230,7 @@ function ProductCard({ product, cycle }: { product: SaaSProduct; cycle: BillingC
 
 // ─── Bundle Card ──────────────────────────────────────────────────────────────
 
-function BundleCard({ bundle, cycle }: { bundle: Bundle; cycle: BillingCycle }) {
+function BundleCard({ bundle, cycle, redirectAfterPayment }: { bundle: Bundle; cycle: BillingCycle; redirectAfterPayment: string }) {
   const price = cycle === "yearly" ? bundle.yearlyInr : bundle.monthlyInr;
   const saving = yearlySaving(bundle.monthlyInr, bundle.yearlyInr);
   const savePct = yearlySavingPct(bundle.monthlyInr, bundle.yearlyInr);
@@ -312,7 +314,8 @@ function BundleCard({ bundle, cycle }: { bundle: Bundle; cycle: BillingCycle }) 
             size="lg"
             className="w-full font-bold bg-violet-600 hover:bg-violet-700 text-white shadow-md shadow-violet-500/20 rounded-[10px] h-[52px] text-base cursor-pointer flex items-center justify-center gap-2"
             icon={<Crown size={16} />}
-            onSuccess={() => (window.location.href = "/account/subscriptions")}
+            returnUrl={redirectAfterPayment}
+            onSuccess={() => (window.location.href = redirectAfterPayment)}
           />
           <p className="text-center text-xs text-gray-400 mt-2">Instant access · Cancel anytime</p>
         </div>
@@ -324,17 +327,47 @@ function BundleCard({ bundle, cycle }: { bundle: Bundle; cycle: BillingCycle }) 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const productsRef = useRef<HTMLElement>(null);
+
   const [products, setProducts] = useState<SaaSProduct[]>([]);
   const [bundles, setBundles] = useState<Bundle[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
-  const [filterCategory, setFilterCategory] = useState<string | null>(null);
+  const [filterCategory, setFilterCategory] = useState<string | null>(
+    searchParams.get("app") ?? null
+  );
   const [billingCycle, setBillingCycle] = useState<BillingCycle>("monthly");
   const [couponCode, setCouponCode] = useState("");
   const [isRedeeming, setIsRedeeming] = useState(false);
   const [redeemSuccess, setRedeemSuccess] = useState<string | null>(null);
   const [redeemError, setRedeemError] = useState<string | null>(null);
+
+  // The URL to redirect to after a successful payment (cross-domain support)
+  const redirectAfterPayment = searchParams.get("redirect") ?? "/account/subscriptions";
+
+  // Sync filterCategory → URL
+  const handleFilterChange = (cat: string | null) => {
+    setFilterCategory(cat);
+    const params = new URLSearchParams(searchParams.toString());
+    if (cat) {
+      params.set("app", cat);
+    } else {
+      params.delete("app");
+    }
+    router.replace(`/dashboard?${params.toString()}`, { scroll: false });
+    // Scroll to products section
+    setTimeout(() => productsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+  };
+
+  // On mount: if ?app= is set, scroll to products section
+  useEffect(() => {
+    if (searchParams.get("app")) {
+      setTimeout(() => productsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 300);
+    }
+  }, [loading]); // run after products load
 
   const handleRedeem = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -508,6 +541,22 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      {/* Active filter banner — shown when redirected from another app */}
+      {filterCategory && searchParams.get("app") && (
+        <div className="flex items-center justify-between gap-3 rounded-xl bg-violet-50 border border-violet-200 px-4 py-3">
+          <div className="flex items-center gap-2 text-sm font-semibold text-violet-800">
+            <Tag size={15} className="text-violet-600" />
+            Showing plans for <span className="capitalize font-black">{filterCategory.replace(/-/g, " ")}</span>
+          </div>
+          <button
+            onClick={() => handleFilterChange(null)}
+            className="text-xs font-bold text-violet-600 hover:text-violet-800 border border-violet-200 rounded-full px-3 py-1 bg-white cursor-pointer"
+          >
+            View all
+          </button>
+        </div>
+      )}
+
       {/* Error */}
       {error && (
         <div className="flex items-center gap-2.5 rounded-xl bg-red-50 border-l-4 border-red-600 px-[18px] py-3.5 text-sm font-medium text-red-600">
@@ -529,14 +578,14 @@ export default function DashboardPage() {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6">
             {bundles.map((bundle) => (
-              <BundleCard key={bundle.id} bundle={bundle} cycle={billingCycle} />
+              <BundleCard key={bundle.id} bundle={bundle} cycle={billingCycle} redirectAfterPayment={redirectAfterPayment} />
             ))}
           </div>
         </section>
       )}
 
       {/* ── Individual Products ── */}
-      <section>
+      <section ref={productsRef}>
         {/* Header + search */}
         <div className="flex flex-wrap items-center justify-between gap-4 pb-4 mb-4 border-b border-gray-100">
           <div className="flex items-center gap-3">
@@ -571,7 +620,7 @@ export default function DashboardPage() {
               return (
                 <button
                   key={cat ?? "__all__"}
-                  onClick={() => setFilterCategory(cat)}
+                  onClick={() => handleFilterChange(cat)}
                   className={`px-3.5 py-1.5 rounded-full text-[13px] font-semibold border cursor-pointer transition-all duration-150 capitalize
                     ${active
                       ? "border-violet-700 bg-violet-700 text-white"
@@ -628,7 +677,7 @@ export default function DashboardPage() {
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 sm:gap-6">
                   {groupProducts.map((product) => (
-                    <ProductCard key={product.id} product={product} cycle={billingCycle} />
+                    <ProductCard key={product.id} product={product} cycle={billingCycle} redirectAfterPayment={redirectAfterPayment} />
                   ))}
                 </div>
               </div>

@@ -1,16 +1,15 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import {
     Crown,
     Check,
     Sparkles,
     CreditCard,
-    Calendar,
     ArrowUpRight,
     Loader2,
     AlertTriangle,
@@ -27,39 +26,21 @@ import { useProfile } from "../layout";
 import {
     fetchPublicPlans,
     fetchUserSubscriptions,
-    createRazorpayOrder,
-    verifyRazorpayPayment,
     cancelUserSubscription,
     type UserSubscription,
     type SaasProduct,
     type BundlePlan,
 } from "@/lib/api";
+import { RazorpayButton } from "@/components/razorpay-checkout";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 type BillingCycle = "monthly" | "yearly";
 type Currency = "INR" | "USD";
 
-// ─── Razorpay window type ──────────────────────────────────────────────────────
-declare global {
-    interface Window {
-        Razorpay: any;
-    }
-}
+// Tier order — must match the backend planTier values
+const TIERS = ["free", "standard", "pro", "enterprise"];
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
-function loadRazorpayScript(): Promise<boolean> {
-    return new Promise((resolve) => {
-        if (typeof window === "undefined") return resolve(false);
-        if (window.Razorpay) return resolve(true);
-
-        const script = document.createElement("script");
-        script.src = "https://checkout.razorpay.com/v1/checkout.js";
-        script.onload = () => resolve(true);
-        script.onerror = () => resolve(false);
-        document.body.appendChild(script);
-    });
-}
-
 function formatPrice(amountInPaise: number, currency: Currency): string {
     if (amountInPaise === 0) return "Free";
     const amount = amountInPaise / 100;
@@ -73,44 +54,78 @@ function getYearlySavings(monthly: number, yearly: number): number {
     return Math.round(((annualIfMonthly - yearly) / annualIfMonthly) * 100);
 }
 
+const normalizeFamily = (str?: string) => str?.toLowerCase().replace(/[\s_-]+/g, "") || "";
+const normalizeSaasPrefix = (saasId?: string) => saasId?.split("-")[0]?.toLowerCase() || "";
+
+function getHiddenProductIds(
+    activeSubs: UserSubscription[],
+    allProducts: SaasProduct[]
+): Set<number> {
+    const hidden = new Set<number>();
+    const activeProductIds = new Set(activeSubs.map(s => s.saasProductId).filter(Boolean));
+
+    const highestActiveTierByFamily: Record<string, number> = {};
+    for (const sub of activeSubs) {
+        const product = allProducts.find(p => p.id === sub.saasProductId);
+        if (!product) continue;
+        const family = normalizeFamily(product.productFamily || product.tag);
+        const saasPrefix = normalizeSaasPrefix(product.saasId);
+        const tierIdx = TIERS.indexOf(product.planTier || "free");
+        for (const key of [family, saasPrefix].filter(Boolean)) {
+            if (highestActiveTierByFamily[key] === undefined || tierIdx > highestActiveTierByFamily[key]) {
+                highestActiveTierByFamily[key] = tierIdx;
+            }
+        }
+    }
+
+    for (const product of allProducts) {
+        const family = normalizeFamily(product.productFamily || product.tag);
+        const saasPrefix = normalizeSaasPrefix(product.saasId);
+        const tierIdx = TIERS.indexOf(product.planTier || "free");
+        const highestActive = Math.max(
+            highestActiveTierByFamily[family] ?? -1,
+            highestActiveTierByFamily[saasPrefix] ?? -1
+        );
+
+        if (activeProductIds.has(product.id as number)) {
+            hidden.add(product.id as number);
+            continue;
+        }
+        if (highestActive >= 0 && tierIdx <= highestActive) {
+            hidden.add(product.id as number);
+        }
+    }
+
+    return hidden;
+}
+
 // ─── Plan Card Component ───────────────────────────────────────────────────────
 function PlanCard({
     plan,
     isBundle,
     billingCycle,
     currency,
-    currentSubIds,
-    onSubscribe,
-    loadingId,
+    onSuccess,
+    returnUrl,
 }: {
     plan: SaasProduct | BundlePlan;
     isBundle: boolean;
     billingCycle: BillingCycle;
     currency: Currency;
-    currentSubIds: Set<number>;
-    onSubscribe: (plan: SaasProduct | BundlePlan, isBundle: boolean) => void;
-    loadingId: number | null;
+    onSuccess: () => void;
+    returnUrl?: string;
 }) {
     const pricing = plan.pricing?.[currency];
     const price = billingCycle === "yearly" ? (pricing?.yearly ?? 0) : (pricing?.monthly ?? 0);
     const isFree = price === 0;
-    const isActive = currentSubIds.has(Number(plan.id));
     const savings = pricing ? getYearlySavings(pricing.monthly, pricing.yearly) : 0;
     const isPopular = !isBundle && (plan as SaasProduct).planTier === "pro";
-    const isLoading = loadingId === Number(plan.id);
 
     return (
-        <Card className={`relative flex flex-col transition-all duration-200 ${isPopular ? "border-primary shadow-lg shadow-primary/10 ring-1 ring-primary/20" : ""} ${isActive ? "bg-primary/5 border-primary/30" : ""}`}>
+        <Card className={`relative flex flex-col transition-all duration-200 ${isPopular ? "border-primary shadow-lg shadow-primary/10 ring-1 ring-primary/20" : ""}`}>
             {isPopular && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2">
                     <Badge className="text-xs px-3 py-0.5 shadow-sm">Most Popular</Badge>
-                </div>
-            )}
-            {isActive && (
-                <div className="absolute -top-3 right-4">
-                    <Badge variant="outline" className="text-xs border-primary text-primary bg-background">
-                        <CheckCircle2 size={12} className="mr-1" /> Active
-                    </Badge>
                 </div>
             )}
 
@@ -157,22 +172,18 @@ function PlanCard({
             </CardContent>
 
             <CardFooter>
-                {isActive ? (
-                    <Button variant="outline" className="w-full" disabled>
-                        <CheckCircle2 size={14} className="mr-2 text-primary" /> Current Plan
-                    </Button>
-                ) : (
-                    <Button
-                        className="w-full"
-                        variant={isPopular ? "default" : "outline"}
-                        onClick={() => onSubscribe(plan, isBundle)}
-                        disabled={isLoading}
-                    >
-                        {isLoading && <Loader2 size={14} className="mr-2 animate-spin" />}
-                        {isFree ? "Start Free" : "Subscribe"}
-                        {!isFree && !isLoading && <ArrowUpRight size={14} className="ml-1" />}
-                    </Button>
-                )}
+                <RazorpayButton
+                    saasProductId={isBundle ? undefined : Number(plan.id)}
+                    bundleId={isBundle ? Number(plan.id) : undefined}
+                    billingCycle={billingCycle}
+                    currency={currency}
+                    planName={plan.name}
+                    label={isFree ? "Start Free" : "Upgrade Now"}
+                    fullWidth
+                    icon={!isFree ? <ArrowUpRight size={14} /> : undefined}
+                    returnUrl={returnUrl}
+                    onSuccess={onSuccess}
+                />
             </CardFooter>
         </Card>
     );
@@ -181,24 +192,20 @@ function PlanCard({
 // ─── Main Page ─────────────────────────────────────────────────────────────────
 export default function SubscriptionPage() {
     const { user } = useProfile();
+    const searchParams = useSearchParams();
+    const returnUrl = searchParams.get("returnUrl") ?? undefined;
 
     const [billingCycle, setBillingCycle] = useState<BillingCycle>("yearly");
     const [currency, setCurrency] = useState<Currency>("INR");
     const [plans, setPlans] = useState<{ products: SaasProduct[]; bundles: BundlePlan[] } | null>(null);
     const [subscriptions, setSubscriptions] = useState<UserSubscription[]>([]);
     const [loadingPlans, setLoadingPlans] = useState(true);
-    const [loadingId, setLoadingId] = useState<number | null>(null);
     const [cancelId, setCancelId] = useState<number | null>(null);
     const [canceling, setCanceling] = useState(false);
     const [paymentSuccess, setPaymentSuccess] = useState<string | null>(null);
 
-    const currentSubIds = new Set(
-        subscriptions
-            .filter(s => s.status === "active")
-            .map(s => s.saasProductId || s.bundleId || -1)
-    );
+    const activeSubs = subscriptions.filter(s => s.status === "active");
 
-    // Fetch plans + user subscriptions
     const loadData = useCallback(async () => {
         setLoadingPlans(true);
         try {
@@ -208,7 +215,7 @@ export default function SubscriptionPage() {
             ]);
             setPlans(plansData);
             setSubscriptions(subsData);
-        } catch (e) {
+        } catch {
             toast.error("Failed to load plans. Please refresh.");
         } finally {
             setLoadingPlans(false);
@@ -217,100 +224,6 @@ export default function SubscriptionPage() {
 
     useEffect(() => { loadData(); }, [loadData]);
 
-    // Handle Razorpay checkout
-    const handleSubscribe = async (plan: SaasProduct | BundlePlan, isBundle: boolean) => {
-        if (!user) { toast.error("Please log in first"); return; }
-        setLoadingId(Number(plan.id));
-
-        try {
-            // Load Razorpay script
-            const scriptLoaded = await loadRazorpayScript();
-            if (!scriptLoaded) {
-                toast.error("Could not load payment gateway. Please try again.");
-                setLoadingId(null);
-                return;
-            }
-
-            // Create order on backend
-            const orderData = await createRazorpayOrder({
-                saasProductId: isBundle ? undefined : Number(plan.id),
-                bundleId: isBundle ? Number(plan.id) : undefined,
-                billingCycle,
-                currency,
-            });
-
-            // Free plan — no payment needed
-            if ((orderData as any).free) {
-                setPaymentSuccess(plan.name);
-                await loadData();
-                setLoadingId(null);
-                return;
-            }
-
-            // Open Razorpay checkout
-            const options = {
-                key: orderData.keyId,
-                amount: orderData.amount,
-                currency: orderData.currency,
-                name: "CodeSwayam",
-                description: `${plan.name} — ${billingCycle}`,
-                order_id: orderData.orderId,
-                prefill: {
-                    name: user.name || "",
-                    email: user.email || "",
-                },
-                theme: {
-                    color: "#8b5cf6",
-                    backdrop_color: "rgba(0,0,0,0.6)",
-                },
-                modal: {
-                    ondismiss: () => {
-                        toast.info("Payment cancelled");
-                        setLoadingId(null);
-                    },
-                },
-                handler: async (response: {
-                    razorpay_order_id: string;
-                    razorpay_payment_id: string;
-                    razorpay_signature: string;
-                }) => {
-                    try {
-                        // Verify payment on backend
-                        await verifyRazorpayPayment({
-                            razorpay_order_id: response.razorpay_order_id,
-                            razorpay_payment_id: response.razorpay_payment_id,
-                            razorpay_signature: response.razorpay_signature,
-                            saasProductId: isBundle ? undefined : Number(plan.id),
-                            bundleId: isBundle ? Number(plan.id) : undefined,
-                            billingCycle,
-                            currency,
-                            amount: orderData.amount,
-                        });
-
-                        setPaymentSuccess(plan.name);
-                        await loadData();
-                        toast.success(`🎉 Subscribed to ${plan.name}!`);
-                    } catch (e: any) {
-                        toast.error(e.message || "Payment verification failed");
-                    } finally {
-                        setLoadingId(null);
-                    }
-                },
-            };
-
-            const rzp = new window.Razorpay(options);
-            rzp.on("payment.failed", (response: any) => {
-                toast.error(`Payment failed: ${response.error.description}`);
-                setLoadingId(null);
-            });
-            rzp.open();
-        } catch (e: any) {
-            toast.error(e.message || "Failed to initiate payment");
-            setLoadingId(null);
-        }
-    };
-
-    // Cancel subscription
     const handleCancel = async () => {
         if (!cancelId) return;
         setCanceling(true);
@@ -325,6 +238,23 @@ export default function SubscriptionPage() {
             setCanceling(false);
         }
     };
+
+    const handlePaymentSuccess = (planName: string) => {
+        setPaymentSuccess(planName);
+        loadData();
+    };
+
+    // Compute which plans to hide — already active or lower/equal tier in same family
+    const hiddenIds = plans
+        ? getHiddenProductIds(activeSubs, plans.products)
+        : new Set<number>();
+
+    const visibleProducts = plans?.products.filter(p => !hiddenIds.has(p.id)) ?? [];
+    // Bundles: hide if user already has an active bundle subscription for it
+    const activeBundleIds = new Set(activeSubs.map(s => s.bundleId).filter(Boolean));
+    const visibleBundles = plans?.bundles.filter(b => !activeBundleIds.has(b.id)) ?? [];
+
+    const hasUpgrades = visibleProducts.length > 0 || visibleBundles.length > 0;
 
     if (!user) return null;
 
@@ -345,7 +275,7 @@ export default function SubscriptionPage() {
             )}
 
             {/* Current Subscriptions */}
-            {subscriptions.length > 0 && (
+            {activeSubs.length > 0 && (
                 <Card>
                     <CardHeader>
                         <div className="flex items-center justify-between">
@@ -358,7 +288,7 @@ export default function SubscriptionPage() {
                         </div>
                     </CardHeader>
                     <CardContent className="space-y-3">
-                        {subscriptions.map(sub => (
+                        {activeSubs.map(sub => (
                             <div key={sub.id} className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
                                 <div className="flex items-center gap-3">
                                     <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
@@ -368,24 +298,20 @@ export default function SubscriptionPage() {
                                         <p className="text-sm font-medium">{sub.productName || sub.bundleName || "Plan"}</p>
                                         <p className="text-xs text-muted-foreground capitalize">
                                             {sub.billingCycle} · {sub.currency} {sub.amount ? formatPrice(sub.amount, sub.currency as Currency) : "Free"}
-                                            {sub.expiresAt && ` · Expires ${new Date(sub.expiresAt).toLocaleDateString()}`}
+                                            {sub.expiresAt && ` · Renews ${new Date(sub.expiresAt).toLocaleDateString()}`}
                                         </p>
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <Badge variant={sub.status === "active" ? "success" : "destructive"} className="text-xs capitalize">
-                                        {sub.status}
-                                    </Badge>
-                                    {sub.status === "active" && (
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            className="h-7 px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
-                                            onClick={() => setCancelId(sub.id)}
-                                        >
-                                            Cancel
-                                        </Button>
-                                    )}
+                                    <Badge variant="success" className="text-xs">Active</Badge>
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-7 px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                        onClick={() => setCancelId(sub.id)}
+                                    >
+                                        Cancel
+                                    </Button>
                                 </div>
                             </div>
                         ))}
@@ -393,12 +319,18 @@ export default function SubscriptionPage() {
                 </Card>
             )}
 
-            {/* Plans Header */}
+            {/* Available Upgrades */}
             <div>
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
                     <div>
-                        <h3 className="text-lg font-semibold">Available Plans</h3>
-                        <p className="text-sm text-muted-foreground">Choose a plan that works for your needs</p>
+                        <h3 className="text-lg font-semibold">
+                            {activeSubs.length > 0 ? "Available Upgrades" : "Available Plans"}
+                        </h3>
+                        <p className="text-sm text-muted-foreground">
+                            {activeSubs.length > 0
+                                ? "Plans higher than your current subscriptions"
+                                : "Choose a plan that works for your needs"}
+                        </p>
                     </div>
 
                     <div className="flex items-center gap-3 flex-wrap">
@@ -439,54 +371,50 @@ export default function SubscriptionPage() {
                     </div>
                 </div>
 
-                {/* Plans Grid */}
                 {loadingPlans ? (
                     <div className="flex items-center justify-center py-20">
                         <Loader2 size={28} className="animate-spin text-muted-foreground" />
                     </div>
-                ) : !plans || (plans.products.length === 0 && plans.bundles.length === 0) ? (
-                    <div className="text-center py-16 text-muted-foreground">
-                        <Sparkles size={36} className="mx-auto mb-3 opacity-30" />
-                        <p className="text-sm">No plans available right now. Check back soon.</p>
+                ) : !hasUpgrades ? (
+                    <div className="text-center py-16 text-muted-foreground border rounded-xl bg-muted/20">
+                        <Crown size={36} className="mx-auto mb-3 opacity-30" />
+                        <p className="text-sm font-semibold">You&apos;re on the highest available plan</p>
+                        <p className="text-xs mt-1">No further upgrades are available at this time.</p>
                     </div>
                 ) : (
                     <div className="space-y-8">
-                        {/* Individual Products */}
-                        {plans.products.length > 0 && (
+                        {visibleProducts.length > 0 && (
                             <div>
                                 <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">Individual Products</h4>
-                                <div className={`grid gap-4 ${plans.products.length === 1 ? "grid-cols-1 max-w-sm" : plans.products.length === 2 ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"}`}>
-                                    {plans.products.map(product => (
+                                <div className={`grid gap-4 ${visibleProducts.length === 1 ? "grid-cols-1 max-w-sm" : visibleProducts.length === 2 ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"}`}>
+                                    {visibleProducts.map(product => (
                                         <PlanCard
                                             key={product.id}
                                             plan={product}
                                             isBundle={false}
                                             billingCycle={billingCycle}
                                             currency={currency}
-                                            currentSubIds={currentSubIds}
-                                            onSubscribe={handleSubscribe}
-                                            loadingId={loadingId}
+                                            onSuccess={() => handlePaymentSuccess(product.name)}
+                                            returnUrl={returnUrl}
                                         />
                                     ))}
                                 </div>
                             </div>
                         )}
 
-                        {/* Bundles */}
-                        {plans.bundles.length > 0 && (
+                        {visibleBundles.length > 0 && (
                             <div>
                                 <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">Bundles</h4>
-                                <div className={`grid gap-4 ${plans.bundles.length === 1 ? "grid-cols-1 max-w-sm" : "grid-cols-1 sm:grid-cols-2"}`}>
-                                    {plans.bundles.map(bundle => (
+                                <div className={`grid gap-4 ${visibleBundles.length === 1 ? "grid-cols-1 max-w-sm" : "grid-cols-1 sm:grid-cols-2"}`}>
+                                    {visibleBundles.map(bundle => (
                                         <PlanCard
                                             key={bundle.id}
                                             plan={bundle}
                                             isBundle={true}
                                             billingCycle={billingCycle}
                                             currency={currency}
-                                            currentSubIds={currentSubIds}
-                                            onSubscribe={handleSubscribe}
-                                            loadingId={loadingId}
+                                            onSuccess={() => handlePaymentSuccess(bundle.name)}
+                                            returnUrl={returnUrl}
                                         />
                                     ))}
                                 </div>
@@ -506,21 +434,11 @@ export default function SubscriptionPage() {
                 </CardHeader>
                 <CardContent>
                     <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                        <span className="flex items-center gap-1">
-                            <Check size={12} className="text-emerald-500" /> UPI Supported
-                        </span>
-                        <span className="flex items-center gap-1">
-                            <Check size={12} className="text-emerald-500" /> Debit / Credit Cards
-                        </span>
-                        <span className="flex items-center gap-1">
-                            <Check size={12} className="text-emerald-500" /> Net Banking
-                        </span>
-                        <span className="flex items-center gap-1">
-                            <Check size={12} className="text-emerald-500" /> International Cards
-                        </span>
-                        <span className="flex items-center gap-1">
-                            <Check size={12} className="text-emerald-500" /> 256-bit SSL Encrypted
-                        </span>
+                        <span className="flex items-center gap-1"><Check size={12} className="text-emerald-500" /> UPI Supported</span>
+                        <span className="flex items-center gap-1"><Check size={12} className="text-emerald-500" /> Debit / Credit Cards</span>
+                        <span className="flex items-center gap-1"><Check size={12} className="text-emerald-500" /> Net Banking</span>
+                        <span className="flex items-center gap-1"><Check size={12} className="text-emerald-500" /> International Cards</span>
+                        <span className="flex items-center gap-1"><Check size={12} className="text-emerald-500" /> 256-bit SSL Encrypted</span>
                     </div>
                 </CardContent>
             </Card>

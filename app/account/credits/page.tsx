@@ -243,6 +243,15 @@ export default function CreditsPage() {
   const [activeTab,    setActiveTab]    = useState<"buy" | "history" | "features">("buy");
   const [referralStats, setReferralStats] = useState<ReferralStats | null>(null);
 
+  // Pagination for transaction history
+  const [txPage, setTxPage] = useState(1);
+  const TX_PAGE_SIZE = 15;
+  const filteredTxAll = txFilter === "all" ? transactions : transactions.filter(t => t.type === txFilter);
+  const txTotalPages = Math.max(1, Math.ceil(filteredTxAll.length / TX_PAGE_SIZE));
+  const filteredTx = filteredTxAll.slice((txPage - 1) * TX_PAGE_SIZE, txPage * TX_PAGE_SIZE);
+  // Reset page when filter changes
+  const handleTxFilter = (f: string) => { setTxFilter(f); setTxPage(1); };
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -301,10 +310,6 @@ export default function CreditsPage() {
       setBuying(null);
     }
   };
-
-  const filteredTx = txFilter === "all"
-    ? transactions
-    : transactions.filter(t => t.type === txFilter);
 
   const featuresByCategory = features.reduce<Record<string, FeatureCreditCost[]>>((acc, f) => {
     const cat = f.category || "general";
@@ -433,7 +438,7 @@ export default function CreditsPage() {
               {["all", "purchase", "usage", "bonus", "adjustment"].map(f => (
                 <button
                   key={f}
-                  onClick={() => setTxFilter(f)}
+                  onClick={() => handleTxFilter(f)}
                   className={`rounded-full border px-3 py-1 text-[11px] font-bold capitalize transition-colors
                     ${txFilter === f
                       ? "border-violet-600 bg-violet-600 text-white"
@@ -453,9 +458,27 @@ export default function CreditsPage() {
               </p>
             </div>
           ) : (
+            <>
             <div className="divide-y divide-gray-50">
               {filteredTx.map(tx => <TxRow key={tx.id} tx={tx} />)}
             </div>
+            {txTotalPages > 1 && (
+              <div className="flex items-center justify-between px-4 py-3 border-t bg-gray-50/50 text-xs text-gray-500">
+                <span>{(txPage - 1) * TX_PAGE_SIZE + 1}–{Math.min(txPage * TX_PAGE_SIZE, filteredTxAll.length)} of {filteredTxAll.length} transactions</span>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => setTxPage(p => Math.max(1, p - 1))} disabled={txPage === 1}
+                    className="h-7 w-7 flex items-center justify-center rounded border border-gray-200 bg-white disabled:opacity-40 hover:bg-gray-50">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 18l-6-6 6-6"/></svg>
+                  </button>
+                  <span className="px-2">{txPage} / {txTotalPages}</span>
+                  <button onClick={() => setTxPage(p => Math.min(txTotalPages, p + 1))} disabled={txPage === txTotalPages}
+                    className="h-7 w-7 flex items-center justify-center rounded border border-gray-200 bg-white disabled:opacity-40 hover:bg-gray-50">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18l6-6-6-6"/></svg>
+                  </button>
+                </div>
+              </div>
+            )}
+            </>
           )}
         </div>
       )}

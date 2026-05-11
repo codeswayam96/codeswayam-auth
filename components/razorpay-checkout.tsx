@@ -33,34 +33,34 @@ function loadRazorpayScript(): Promise<boolean> {
 // ─── Props ─────────────────────────────────────────────────────────────────────
 
 export interface RazorpayButtonProps {
-  /** For single-product subscriptions */
   saasProductId?: number;
-  /** For bundle subscriptions */
   bundleId?: number;
-  /** Billing cycle */
   billingCycle: "monthly" | "yearly" | "lifetime";
-  /** Payment currency */
   currency: "INR" | "USD";
-  /** Display name for the plan (shown in Razorpay modal) */
   planName: string;
-  /** Button label text */
   label?: string;
-  /** Button size variant */
   size?: "default" | "sm" | "lg" | "icon";
-  /** Extra className for the button */
   className?: string;
-  /** Inline style override */
   style?: CSSProperties;
-  /** Full width */
   fullWidth?: boolean;
-  /** Optional icon to show before the label */
   icon?: ReactNode;
-  /** Called after successful payment & verification */
   onSuccess?: () => void;
-  /** Called on payment failure */
   onError?: (error: string) => void;
-  /** Use referral points for discount */
   usePoints?: boolean;
+  /**
+   * Where to redirect after successful payment.
+   * IMPORTANT for cross-domain flows: if the user is paying from auraflow.com,
+   * pass the full URL of the page they should return to.
+   * Defaults to the current page (window.location.href).
+   *
+   * @example
+   * // From auraflow — redirect back to auraflow dashboard after payment
+   * returnUrl={`${window.location.origin}/dashboard`}
+   *
+   * // From codeswayam-auth — stay on subscriptions page
+   * returnUrl="/account/subscriptions"
+   */
+  returnUrl?: string;
 }
 
 // ─── Component ─────────────────────────────────────────────────────────────────
@@ -80,8 +80,31 @@ export function RazorpayButton({
   onSuccess,
   onError,
   usePoints = false,
+  returnUrl,
 }: RazorpayButtonProps) {
   const [loading, setLoading] = useState(false);
+
+  // Resolve where to go after payment.
+  // If returnUrl is a relative path, keep it as-is (same domain).
+  // If it's a full URL (starts with http), use it directly (cross-domain).
+  const resolveReturnUrl = () => {
+    if (returnUrl) return returnUrl;
+    // Default: stay on current page
+    return typeof window !== "undefined" ? window.location.href : "/";
+  };
+
+  const handleSuccess = () => {
+    onSuccess?.();
+    const url = resolveReturnUrl();
+    // Small delay so toast is visible before redirect
+    setTimeout(() => {
+      if (url.startsWith("http")) {
+        window.location.href = url;
+      } else {
+        window.location.href = url;
+      }
+    }, 800);
+  };
 
   const handleClick = useCallback(async () => {
     if (loading) return;
@@ -165,7 +188,7 @@ export function RazorpayButton({
             });
 
             toast.success(`🎉 Subscribed to ${planName}!`);
-            onSuccess?.();
+            handleSuccess();
           } catch (e: any) {
             const msg = e.message || "Payment verification failed";
             toast.error(msg);

@@ -22,6 +22,13 @@ export default function ReferralsPage() {
     type: "success" | "error"; text: string;
   } | null>(null);
 
+  // Pagination for history
+  const [histPage, setHistPage] = useState(1);
+  const HIST_PAGE_SIZE = 10;
+  const history = stats?.history ?? [];
+  const histTotalPages = Math.max(1, Math.ceil(history.length / HIST_PAGE_SIZE));
+  const pagedHistory = history.slice((histPage - 1) * HIST_PAGE_SIZE, histPage * HIST_PAGE_SIZE);
+
   useEffect(() => {
     (async () => {
       try { setStats(await fetchReferralStats()); }
@@ -274,7 +281,7 @@ export default function ReferralsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {stats.history.map((item) => (
+                {pagedHistory.map((item) => (
                   <tr key={item.id} className="transition-colors hover:bg-gray-50/60">
                     <td className="px-4 sm:px-6 py-3 sm:py-4 text-xs sm:text-sm">
                       {new Date(item.createdAt).toLocaleDateString("en-US", {
@@ -293,6 +300,22 @@ export default function ReferralsPage() {
                 ))}
               </tbody>
             </table>
+            {histTotalPages > 1 && (
+              <div className="flex items-center justify-between px-4 sm:px-6 py-3 border-t bg-gray-50/50 text-xs text-gray-500">
+                <span>{(histPage - 1) * HIST_PAGE_SIZE + 1}–{Math.min(histPage * HIST_PAGE_SIZE, history.length)} of {history.length} entries</span>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => setHistPage(p => Math.max(1, p - 1))} disabled={histPage === 1}
+                    className="h-7 w-7 flex items-center justify-center rounded border border-gray-200 bg-white disabled:opacity-40 hover:bg-gray-50">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 18l-6-6 6-6"/></svg>
+                  </button>
+                  <span className="px-2">{histPage} / {histTotalPages}</span>
+                  <button onClick={() => setHistPage(p => Math.min(histTotalPages, p + 1))} disabled={histPage === histTotalPages}
+                    className="h-7 w-7 flex items-center justify-center rounded border border-gray-200 bg-white disabled:opacity-40 hover:bg-gray-50">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 18l6-6-6-6"/></svg>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <Card className="border-2 border-dashed border-gray-200 shadow-none">

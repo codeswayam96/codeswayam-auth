@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Shield, Lock, Eye, EyeOff, Loader2, Key, Smartphone, LogOut, AlertCircle, CheckCircle } from "lucide-react";
+import { Shield, Lock, Eye, EyeOff, Loader2, Key, Smartphone, LogOut, AlertCircle, CheckCircle, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
 import { useAccount } from "../layout";
@@ -120,6 +120,12 @@ export default function SecurityPage() {
 
   const [revokeOpen, setRevokeOpen] = useState<string | null>(null);
   const [revoking, setRevoking] = useState<string | null>(null);
+
+  // Sessions pagination
+  const SESSIONS_PER_PAGE = 5;
+  const [sessionsPage, setSessionsPage] = useState(1);
+  const sessionsTotalPages = Math.max(1, Math.ceil(sessions.length / SESSIONS_PER_PAGE));
+  const paginatedSessions = sessions.slice((sessionsPage - 1) * SESSIONS_PER_PAGE, sessionsPage * SESSIONS_PER_PAGE);
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -394,33 +400,48 @@ export default function SecurityPage() {
               <p className="text-sm text-muted-foreground">Loading active sessions...</p>
             </div>
           ) : sessions.length > 0 ? (
-            sessions.map((session, idx) => (
-              <div
-                key={session.id}
-                className="flex items-start justify-between p-4 border rounded-lg hover:bg-muted/30 transition-colors"
-              >
-                <div className="space-y-1">
-                  <p className="font-medium">{parseUserAgent(session?.userAgent)}</p>
-                  <p className="text-xs text-muted-foreground">
-                     IP: {session.ipAddress || "Unknown"}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Started: {new Date(session.createdAt).toLocaleString()}
-                  </p>
-                  {/* Current session logic: comparing tokens would be best, but we'll show first as current for now */}
-                  {idx === sessions.length - 1 && <Badge className="mt-2">Current</Badge>}
-                </div>
-                {idx !== sessions.length - 1 && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setRevokeOpen(session.id)}
+            <>
+              {paginatedSessions.map((session, idx) => {
+                const globalIdx = (sessionsPage - 1) * SESSIONS_PER_PAGE + idx;
+                const isCurrent = globalIdx === sessions.length - 1;
+                return (
+                  <div
+                    key={session.id}
+                    className="flex items-start justify-between p-4 border rounded-lg hover:bg-muted/30 transition-colors"
                   >
-                    <LogOut size={14} />
-                  </Button>
-                )}
-              </div>
-            ))
+                    <div className="space-y-1">
+                      <p className="font-medium">{parseUserAgent(session?.userAgent)}</p>
+                      <p className="text-xs text-muted-foreground">IP: {session.ipAddress || "Unknown"}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Started: {new Date(session.createdAt).toLocaleString()}
+                      </p>
+                      {isCurrent && <Badge className="mt-2">Current</Badge>}
+                    </div>
+                    {!isCurrent && (
+                      <Button variant="outline" size="sm" onClick={() => setRevokeOpen(session.id)}>
+                        <LogOut size={14} />
+                      </Button>
+                    )}
+                  </div>
+                );
+              })}
+              {sessionsTotalPages > 1 && (
+                <div className="flex items-center justify-between pt-2 border-t">
+                  <p className="text-xs text-muted-foreground">
+                    {(sessionsPage - 1) * SESSIONS_PER_PAGE + 1}–{Math.min(sessionsPage * SESSIONS_PER_PAGE, sessions.length)} of {sessions.length} sessions
+                  </p>
+                  <div className="flex items-center gap-1">
+                    <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setSessionsPage(p => Math.max(1, p - 1))} disabled={sessionsPage === 1}>
+                      <ChevronLeft size={14} />
+                    </Button>
+                    <span className="text-xs text-muted-foreground px-2">{sessionsPage} / {sessionsTotalPages}</span>
+                    <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setSessionsPage(p => Math.min(sessionsTotalPages, p + 1))} disabled={sessionsPage === sessionsTotalPages}>
+                      <ChevronRight size={14} />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
           ) : (
             <p className="text-sm text-muted-foreground text-center py-4">No active sessions</p>
           )}

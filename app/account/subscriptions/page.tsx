@@ -21,6 +21,7 @@ import { Label } from "@/components/ui/label";
 import type { UserSubscription } from "@/lib/api";
 import { RazorpayButton } from "@/components/razorpay-checkout";
 import { useAccount } from "../layout";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -33,6 +34,7 @@ interface PublicProduct {
   planTier?: string;
   features: string[];
   tag: string;
+  productFamily: string;
   usageLimits?: Record<string, any>;
   pricing?: {
     INR: { monthly: number; yearly: number };
@@ -170,31 +172,49 @@ interface UpgradeModalProps {
   open: boolean; onClose: () => void;
   currentSub: UserSubscription; allProducts: PublicProduct[]; onSuccess: () => void;
   referralStats: ReferralStats | null;
+  returnUrl?: string;
+  activeSubProductIds: Set<number>;
 }
 
-function UpgradeModal({ open, onClose, currentSub, allProducts, onSuccess, referralStats }: UpgradeModalProps) {
+function UpgradeModal({ open, onClose, currentSub, allProducts, onSuccess, referralStats, returnUrl, activeSubProductIds }: UpgradeModalProps) {
   const [cycle, setCycle] = useState<BillingCycle>("monthly");
   const [selected, setSelected] = useState<PublicProduct | null>(null);
   const [usePoints, setUsePoints] = useState(false);
 
-  const currentProduct = allProducts.find(p => p.id === currentSub.saasProductId);
-  const currentTierIdx = TIERS.indexOf(currentProduct?.planTier || "standard");
+  // Normalize for robust matching (strip spaces, dashes, underscores, lowercase)
+  const norm = (s?: string) => s?.toLowerCase().replace(/[\s_-]+/g, "") || "";
 
-  const currentTag = currentProduct?.tag;
+  const currentProduct = allProducts.find(p => p.id === currentSub.saasProductId)
+    // fallback: match by normalized saasId from subscription
+    ?? allProducts.find(p => norm((p as any).saasId) === norm(currentSub.productSaasId));
 
-  const upgradable = allProducts.filter(p =>
-    p.tag === currentTag &&
-    p.id !== currentSub.saasProductId &&
-    TIERS.indexOf(p.planTier || "standard") > currentTierIdx
-  );
+  const currentTierIdx = TIERS.indexOf(currentProduct?.planTier || "free");
 
-  const display = upgradable.length > 0
-    ? upgradable
-    : allProducts.filter(p => p.tag === currentTag && p.id !== currentSub.saasProductId).slice(0, 4);
+  // productFamily is the canonical grouping key — normalize both sides for robust matching
+  const currentFamily = norm(currentProduct?.productFamily
+    // fallback: derive family from saasId by stripping plan suffixes
+    ?? currentSub.productSaasId?.replace(/[_-](free|standard|pro|enterprise|basic|starter)$/i, ""));
 
+  // Only show plans that are:
+  // 1. In the same product family (normalized)
+  // 2. Strictly higher tier than current
+  // 3. Not already actively subscribed to
+  const display = allProducts
+    .filter(p =>
+      norm(p.productFamily) === currentFamily &&
+      currentFamily !== "" &&
+      TIERS.indexOf(p.planTier || "free") > currentTierIdx &&
+      !activeSubProductIds.has(p.id)
+    )
+    .sort((a, b) => TIERS.indexOf(b.planTier || "free") - TIERS.indexOf(a.planTier || "free"));
   useEffect(() => {
     if (display.length > 0 && !selected) setSelected(display[0]);
   }, [display, selected]);
+
+  // Reset selection when modal opens
+  useEffect(() => {
+    if (open) setSelected(null);
+  }, [open]);
 
   const plan = selected ?? display[0];
   const currentPrice = cycle === "yearly" ? currentProduct?.pricing?.INR?.yearly : currentProduct?.pricing?.INR?.monthly;
@@ -208,14 +228,14 @@ function UpgradeModal({ open, onClose, currentSub, allProducts, onSuccess, refer
   const pointsToCurrencyRate = 10; // 10 pts = 1 INR
   const maxDiscountPercent = 30; // 30%
 
-  let discountedPrice = upgradePrice || 0;
+  let discountedPrice = upgradePrice ?? 0;
   let pointsUsed = 0;
   let discountAmount = 0;
 
-  if (usePoints && upgradePrice && activePoints > 0) {
+  if (usePoints && upgradePrice && upgradePrice > 0 && activePoints > 0) {
     const maxDiscountAllowed = (upgradePrice * maxDiscountPercent) / 100;
     const pointsValueInCurrency = activePoints / pointsToCurrencyRate;
-    discountAmount = Math.min(maxDiscountAllowed, pointsValueInCurrency * 100); // converting to paise
+    discountAmount = Math.min(maxDiscountAllowed, pointsValueInCurrency * 100);
     pointsUsed = Math.ceil((discountAmount / 100) * pointsToCurrencyRate);
     discountedPrice = Math.max(0, upgradePrice - discountAmount);
   }
@@ -234,7 +254,7 @@ function UpgradeModal({ open, onClose, currentSub, allProducts, onSuccess, refer
               <TrendingUp size={16} className="text-white" />
             </div>
             <div>
-              <DialogTitle className="text-base font-extrabold text-gray-900">Upgrade Your Plan</DialogTitle>
+              <DialogTitle className="text-base font-extrabold text-gray-900">Change Your Plan</DialogTitle>
               <DialogDescription className="text-xs text-gray-500">
                 Currently on <strong>{currentSub.productName || currentSub.bundleName}</strong>
                 {currentPrice ? ` · ${formatInr(currentPrice)}/${cycle === "yearly" ? "yr" : "mo"}` : ""}
@@ -247,6 +267,18 @@ function UpgradeModal({ open, onClose, currentSub, allProducts, onSuccess, refer
         {/* Scrollable body */}
         <div className="flex-1 overflow-y-auto px-6 py-5">
 
+          {display.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-center gap-3">
+              <div className="w-14 h-14 rounded-2xl bg-violet-50 flex items-center justify-center">
+                <Crown size={24} className="text-violet-700" />
+              </div>
+              <p className="font-bold text-gray-900">You&apos;re on the highest plan</p>
+              <p className="text-sm text-gray-500 max-w-[280px]">
+                There are no higher plans available in this product family.
+              </p>
+            </div>
+          ) : (
+            <>
           {/* Plan selector cards */}
           <div
             className="grid gap-2.5 mb-5"
@@ -440,14 +472,17 @@ function UpgradeModal({ open, onClose, currentSub, allProducts, onSuccess, refer
               )}
             </div>
           )}
+            </>
+          )}
         </div>
 
-        {/* Sticky CTA footer */}
+        {/* Sticky CTA footer — only shown when there are plans to upgrade to */}
+        {display.length > 0 && (
         <div className="px-6 py-4 border-t border-gray-100 shrink-0 flex items-center justify-between gap-3 bg-white flex-wrap">
           <div>
-            {plan && upgradePrice && upgradePrice > 0 ? (
+            {plan && upgradePrice !== undefined && upgradePrice > 0 ? (
               <div className="flex flex-col">
-                {usePoints && (
+                {usePoints && discountAmount > 0 && (
                   <span className="text-[10px] font-bold text-gray-400 line-through mb-[-4px]">
                     {formatInr(upgradePrice)}
                   </span>
@@ -457,6 +492,8 @@ function UpgradeModal({ open, onClose, currentSub, allProducts, onSuccess, refer
                   <span className="text-xs text-gray-400">/{cycle === "yearly" ? "yr" : "mo"}</span>
                 </div>
               </div>
+            ) : plan && upgradePrice === 0 ? (
+              <span className="text-[22px] font-black text-violet-700">Free</span>
             ) : (
               <span className="text-sm text-gray-500">Select a plan above</span>
             )}
@@ -472,16 +509,18 @@ function UpgradeModal({ open, onClose, currentSub, allProducts, onSuccess, refer
                 billingCycle={cycle}
                 currency="INR"
                 planName={plan.name}
-                label={`Upgrade to ${plan.name}`}
+                label={TIERS.indexOf(plan.planTier || "standard") < currentTierIdx ? `Switch to ${plan.name}` : `Upgrade to ${plan.name}`}
                 size="sm"
                 className="h-8 text-xs gap-1.5 font-bold"
                 icon={<ArrowRight size={13} />}
                 usePoints={usePoints}
                 onSuccess={() => { onSuccess(); onClose(); }}
+                returnUrl={returnUrl}
               />
             )}
           </div>
         </div>
+        )}
       </DialogContent>
     </Dialog>
   );
@@ -493,9 +532,10 @@ interface BundleUpsellModalProps {
   open: boolean; onClose: () => void;
   userSubscriptions: UserSubscription[]; allBundles: PublicBundle[]; onSuccess: () => void;
   referralStats: ReferralStats | null;
+  returnUrl?: string;
 }
 
-function BundleUpsellModal({ open, onClose, userSubscriptions, allBundles, onSuccess, referralStats }: BundleUpsellModalProps) {
+function BundleUpsellModal({ open, onClose, userSubscriptions, allBundles, onSuccess, referralStats, returnUrl }: BundleUpsellModalProps) {
   const [cycle, setCycle] = useState<BillingCycle>("monthly");
   const [usePoints, setUsePoints] = useState(false);
   const monthlySpend = userSubscriptions.filter(s => s.status === "active").reduce((sum, s) => {
@@ -583,6 +623,7 @@ function BundleUpsellModal({ open, onClose, userSubscriptions, allBundles, onSuc
                       className="h-[42px] text-sm font-bold w-full text-white rounded-lg bg-gradient-to-r from-violet-700 to-indigo-600 border-none"
                       icon={<Crown size={15} />}
                       usePoints={usePoints}
+                      returnUrl={returnUrl}
                       onSuccess={() => { onSuccess(); onClose(); }}
                     />
                   </div>
@@ -721,6 +762,8 @@ function SubscriptionCard({
 
 export default function SubscriptionsPage() {
   const { user } = useAccount();
+  const searchParams = useSearchParams();
+  const returnUrl = searchParams.get("returnUrl") ?? undefined;
   const [subscriptions, setSubscriptions] = useState<UserSubscription[]>([]);
   const [allProducts, setAllProducts] = useState<PublicProduct[]>([]);
   const [allBundles, setAllBundles] = useState<PublicBundle[]>([]);
@@ -851,19 +894,24 @@ export default function SubscriptionsPage() {
 
           {Object.entries(
             activeSubscriptions.reduce((acc, sub) => {
-              // Find the product to get its tag
-              const product = allProducts.find(p => p.id === sub.saasProductId);
-              const tag = product?.tag || "Other Apps";
-              if (!acc[tag]) acc[tag] = [];
-              acc[tag].push(sub);
+              // Group by normalized productFamily
+              const norm = (s?: string) => s?.toLowerCase().replace(/[\s_-]+/g, "") || "";
+              const product = allProducts.find(p => p.id === sub.saasProductId)
+                ?? allProducts.find(p => norm((p as any).saasId) === norm(sub.productSaasId));
+              const family = norm(product?.productFamily)
+                || norm(sub.productSaasId?.replace(/[_-](free|standard|pro|enterprise|basic|starter)$/i, ""))
+                || sub.productName || "Other Apps";
+              const label = product?.tag || sub.productName || family;
+              if (!acc[family]) acc[family] = { label, subs: [] as UserSubscription[] };
+              acc[family].subs.push(sub);
               return acc;
-            }, {} as Record<string, UserSubscription[]>)
-          ).map(([tag, groupSubs]) => (
-            <div key={tag} className="space-y-4">
+            }, {} as Record<string, { label: string; subs: UserSubscription[] }>)
+          ).map(([family, { label, subs: groupSubs }]) => (
+            <div key={family} className="space-y-4">
               <div className="flex items-center gap-2.5 px-1 mt-2">
                 <Tag size={17} className="text-violet-600" />
                 <h2 className="text-base font-bold text-gray-900 capitalize tracking-tight">
-                  {tag.replace(/-/g, " ")}
+                  {label.replace(/-/g, " ")}
                 </h2>
                 <span className="bg-gray-100 text-gray-500 text-[10px] font-bold px-2 py-0.5 rounded-full border border-gray-200">
                   {groupSubs.length} {groupSubs.length === 1 ? 'plan' : 'plans'}
@@ -958,6 +1006,8 @@ export default function SubscriptionsPage() {
           currentSub={upgradeModal}
           allProducts={allProducts as PublicProduct[]}
           referralStats={referralStats}
+          returnUrl={returnUrl}
+          activeSubProductIds={new Set(activeSubscriptions.map(s => s.saasProductId).filter(Boolean))}
           onSuccess={loadData}
         />
       )}
@@ -967,6 +1017,7 @@ export default function SubscriptionsPage() {
         userSubscriptions={subscriptions}
         allBundles={allBundles as PublicBundle[]}
         referralStats={referralStats}
+        returnUrl={returnUrl}
         onSuccess={loadData}
       />
 
