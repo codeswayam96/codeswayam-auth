@@ -14,6 +14,7 @@ import {
 } from "@/lib/api";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { BrandLoader } from "@/components/brand-loader";
 import type { CreditPack, CreditTransaction, FeatureCreditCost, UserCredits } from "@/lib/api";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -318,14 +319,7 @@ export default function CreditsPage() {
   }, {});
 
   if (loading) {
-    return (
-      <div className="flex min-h-[60vh] items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 size={26} className="animate-spin text-violet-600" />
-          <p className="text-sm text-gray-400">Loading your credits…</p>
-        </div>
-      </div>
-    );
+    return <BrandLoader size="md" text="Syncing user wallet and credits..." />;
   }
 
   const balance = wallet?.balance ?? 0;

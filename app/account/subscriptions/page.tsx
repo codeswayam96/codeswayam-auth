@@ -9,9 +9,10 @@ import {
 import {
   CreditCard, DollarSign, AlertCircle, Trash2, Loader2, Zap, ArrowUpRight,
   TrendingUp, Crown, Layers, Package, Sparkles, CheckCircle2, Calendar,
-  ArrowRight, ChevronRight, BarChart3, Star, Tag,
+  ArrowRight, ChevronRight, BarChart3, Star, Tag, Lock,
 } from "lucide-react";
 import { toast } from "sonner";
+import { BrandLoader } from "@/components/brand-loader";
 import {
   fetchUserSubscriptions, cancelUserSubscription, fetchPublicPlans,
   fetchReferralStats, type ReferralStats,
@@ -35,6 +36,7 @@ interface PublicProduct {
   features: string[];
   tag: string;
   productFamily: string;
+  creditPoints?: number;
   usageLimits?: Record<string, any>;
   pricing?: {
     INR: { monthly: number; yearly: number };
@@ -47,6 +49,7 @@ interface PublicBundle {
   name: string;
   description?: string;
   features: string[];
+  creditPoints?: number;
   pricing: {
     INR: { monthly: number; yearly: number };
     USD: { monthly: number; yearly: number };
@@ -228,16 +231,46 @@ function UpgradeModal({ open, onClose, currentSub, allProducts, onSuccess, refer
   const pointsToCurrencyRate = 10; // 10 pts = 1 INR
   const maxDiscountPercent = 30; // 30%
 
-  let discountedPrice = upgradePrice ?? 0;
+  const prorationCredit = (() => {
+    if (!currentSub.expiresAt || !currentSub.createdAt || !currentSub.amount) return 0;
+    const now = Date.now();
+    const expiry = new Date(currentSub.expiresAt).getTime();
+    const start = new Date(currentSub.createdAt).getTime();
+    const total = expiry - start;
+    if (total <= 0) return 0;
+    const remaining = expiry - now;
+    if (remaining <= 0) return 0;
+    const fraction = remaining / total;
+    let unused = Math.floor(currentSub.amount * fraction);
+    if (currentSub.currency === "USD") {
+      unused = Math.round(unused * 83);
+    }
+    return Math.max(0, unused);
+  })();
+
+  const prorationPercent = (() => {
+    if (!currentSub.expiresAt || !currentSub.createdAt) return 0;
+    const expiry = new Date(currentSub.expiresAt).getTime();
+    const start = new Date(currentSub.createdAt).getTime();
+    const total = expiry - start;
+    if (total <= 0) return 0;
+    const remaining = expiry - Date.now();
+    if (remaining <= 0) return 0;
+    return Math.min(100, Math.round((remaining / total) * 100));
+  })();
+
+  const netBeforePoints = Math.max(0, (upgradePrice ?? 0) - prorationCredit);
+
+  let discountedPrice = netBeforePoints;
   let pointsUsed = 0;
   let discountAmount = 0;
 
-  if (usePoints && upgradePrice && upgradePrice > 0 && activePoints > 0) {
-    const maxDiscountAllowed = (upgradePrice * maxDiscountPercent) / 100;
+  if (usePoints && netBeforePoints > 0 && activePoints > 0) {
+    const maxDiscountAllowed = (netBeforePoints * maxDiscountPercent) / 100;
     const pointsValueInCurrency = activePoints / pointsToCurrencyRate;
     discountAmount = Math.min(maxDiscountAllowed, pointsValueInCurrency * 100);
     pointsUsed = Math.ceil((discountAmount / 100) * pointsToCurrencyRate);
-    discountedPrice = Math.max(0, upgradePrice - discountAmount);
+    discountedPrice = Math.max(0, netBeforePoints - discountAmount);
   }
 
   const currentFeats = new Set(currentProduct?.features ?? []);
@@ -313,6 +346,11 @@ function UpgradeModal({ open, onClose, currentSub, allProducts, onSuccess, refer
                     <span className="text-xl font-black text-gray-900">{price ? formatInr(price) : "Free"}</span>
                     {price && price > 0 && <span className="text-[11px] text-gray-400">/{cycle === "yearly" ? "yr" : "mo"}</span>}
                   </div>
+                  {p.creditPoints ? (
+                    <span className="inline-flex items-center gap-1 text-[9px] font-extrabold text-violet-700 bg-violet-50 border border-violet-200 px-1.5 py-0.5 rounded-full w-fit">
+                      +{p.creditPoints.toLocaleString()} points included
+                    </span>
+                  ) : null}
                   {cycle === "yearly" && saving > 0 && (
                     <span className="inline-flex items-center gap-[3px] text-[10px] font-bold text-green-700 bg-green-50 border border-green-200 px-[7px] py-0.5 rounded-full w-fit">
                       <CheckCircle2 size={9} /> Save {formatInr(saving)}/yr
@@ -472,6 +510,37 @@ function UpgradeModal({ open, onClose, currentSub, allProducts, onSuccess, refer
               )}
             </div>
           )}
+
+          {/* Pricing Breakdown Card */}
+          {plan && upgradePrice !== undefined && upgradePrice > 0 && (
+            <div className="mt-4 p-4 rounded-xl border border-violet-100 bg-violet-50/30 flex flex-col gap-2">
+              <p className="m-0 text-xs font-extrabold text-violet-700 uppercase tracking-wider">
+                Price Breakdown
+              </p>
+              <div className="flex justify-between text-xs text-gray-600">
+                <span>New Plan Price ({plan.name})</span>
+                <span className="font-semibold">{formatInr(upgradePrice)}</span>
+              </div>
+              {prorationCredit > 0 && (
+                <div className="flex justify-between text-xs text-emerald-700 font-medium">
+                  <span>
+                    Unused time credit ({prorationPercent}% remaining)
+                  </span>
+                  <span>-{formatInr(prorationCredit)}</span>
+                </div>
+              )}
+              {usePoints && discountAmount > 0 && (
+                <div className="flex justify-between text-xs text-amber-700 font-medium">
+                  <span>Referral points discount</span>
+                  <span>-{formatInr(discountAmount)}</span>
+                </div>
+              )}
+              <div className="border-t border-gray-200 my-1 pt-1.5 flex justify-between text-sm font-bold text-gray-900">
+                <span>Due Today</span>
+                <span className="text-violet-700">{formatInr(discountedPrice)}</span>
+              </div>
+            </div>
+          )}
             </>
           )}
         </div>
@@ -514,6 +583,7 @@ function UpgradeModal({ open, onClose, currentSub, allProducts, onSuccess, refer
                 className="h-8 text-xs gap-1.5 font-bold"
                 icon={<ArrowRight size={13} />}
                 usePoints={usePoints}
+                upgradeFromSubscriptionId={currentSub.id}
                 onSuccess={() => { onSuccess(); onClose(); }}
                 returnUrl={returnUrl}
               />
@@ -592,7 +662,14 @@ function BundleUpsellModal({ open, onClose, userSubscriptions, allBundles, onSuc
                       </div>
                       <div>
                         <h4 className="m-0 font-extrabold text-[15px] text-gray-900">{bundle.name}</h4>
-                        <p className="m-0 text-xs text-gray-500">{bundle.features.length} products included</p>
+                        <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                          <p className="m-0 text-xs text-gray-500">{bundle.features.length} products included</p>
+                          {bundle.creditPoints ? (
+                            <span className="inline-flex items-center text-[9px] font-extrabold text-violet-700 bg-violet-100 border border-violet-200 px-1.5 py-0.5 rounded-full">
+                              +{bundle.creditPoints.toLocaleString()} points included
+                            </span>
+                          ) : null}
+                        </div>
                       </div>
                     </div>
                     <div className="text-right shrink-0">
@@ -746,12 +823,27 @@ function SubscriptionCard({
               <Layers size={14} /> Bundle
             </button>
           )}
-          <button
-            onClick={() => onCancel(sub.id)}
-            className="inline-flex items-center justify-center w-[34px] h-[34px] rounded-lg bg-transparent border border-gray-200 cursor-pointer text-gray-400 transition-all duration-150 hover:bg-red-50 hover:text-red-600 hover:border-red-200"
-          >
-            <Trash2 size={15} />
-          </button>
+          {(() => {
+            const createdAtDate = new Date(sub.createdAt);
+            const canCancel = (Date.now() - createdAtDate.getTime()) <= 7 * 24 * 60 * 60 * 1000;
+            return canCancel ? (
+              <button
+                onClick={() => onCancel(sub.id)}
+                className="inline-flex items-center justify-center w-[34px] h-[34px] rounded-lg bg-transparent border border-gray-200 cursor-pointer text-gray-400 transition-all duration-150 hover:bg-red-50 hover:text-red-600 hover:border-red-200"
+                title="Cancel Subscription (Available within 7 days of purchase)"
+              >
+                <Trash2 size={15} />
+              </button>
+            ) : (
+              <button
+                disabled
+                className="inline-flex items-center justify-center w-[34px] h-[34px] rounded-lg bg-gray-50 border border-gray-200 text-gray-400 cursor-not-allowed opacity-60"
+                title="Cancellation locked (Only available within 7 days of purchase)"
+              >
+                <Lock size={15} />
+              </button>
+            );
+          })()}
         </div>
       </div>
     </div>
@@ -823,11 +915,7 @@ export default function SubscriptionsPage() {
     .sort((a, b) => new Date(a.expiresAt!).getTime() - new Date(b.expiresAt!).getTime())[0];
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-16">
-        <Loader2 size={28} className="animate-spin text-gray-400" />
-      </div>
-    );
+    return <BrandLoader size="md" text="Syncing billing and plans..." />;
   }
 
   return (
@@ -1007,7 +1095,7 @@ export default function SubscriptionsPage() {
           allProducts={allProducts as PublicProduct[]}
           referralStats={referralStats}
           returnUrl={returnUrl}
-          activeSubProductIds={new Set(activeSubscriptions.map(s => s.saasProductId).filter(Boolean))}
+          activeSubProductIds={new Set(activeSubscriptions.map(s => s.saasProductId).filter(Boolean) as number[])}
           onSuccess={loadData}
         />
       )}

@@ -8,6 +8,7 @@ import {
   Loader2, Copy, CheckCircle2, Link2,
   Coins, Users, Gift, ArrowRight, AlertCircle, Shield,
 } from "lucide-react";
+import { BrandLoader } from "@/components/brand-loader";
 
 type CopyType = "code" | "link" | null;
 
@@ -71,14 +72,7 @@ export default function ReferralsPage() {
   };
 
   /* ── Loading ── */
-  if (loading) return (
-    <div className="flex min-h-[60vh] w-full items-center justify-center">
-      <div className="flex flex-col items-center gap-3">
-        <Loader2 size={26} className="animate-spin text-violet-600" />
-        <p className="text-sm font-medium text-gray-400">Loading referral data…</p>
-      </div>
-    </div>
-  );
+  if (loading) return <BrandLoader size="md" text="Loading referral data..." />;
 
   /* ── Error ── */
   if (error) return (

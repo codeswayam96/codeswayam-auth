@@ -11,34 +11,70 @@ function toSafeRelative(url: string): string {
     }
 }
 
-const PROTECTED_ROUTES = ["/profile", "/account", "/dashboard"];
+/**
+ * Routes that require authentication.
+ * Any request to these paths is rejected at the edge if no auth cookie is present.
+ * Using prefix matching — /account also covers /account/profile, /account/security, etc.
+ */
+const PROTECTED_PREFIXES = [
+    "/account",
+    "/dashboard",
+    "/profile",
+    "/invoices",
+];
 
-// Auth routes + SSO must be excluded from the auth-gate to prevent loops.
-// /sso is the central redirect handler — it must never be intercepted.
-const AUTH_ROUTES = ["/login", "/signup", "/forgot-password", "/reset-password", "/sso"];
+/**
+ * Routes that must NEVER be intercepted by the auth gate.
+ * - Auth routes: login/signup pages (would create redirect loop)
+ * - /sso: the SSO handler must be reachable even when authenticated so it can issue tickets
+ */
+const PUBLIC_PREFIXES = ["/login", "/signup", "/forgot-password", "/reset-password", "/sso"];
+
+/**
+ * Determines whether the request has a valid auth signal.
+ *
+ * Two cookie strategies are in use across the platform:
+ *  1. `Authentication`  — HttpOnly cookie set by core-api on `.codeswayam.com`.
+ *                         Shared across all subdomains automatically by the browser.
+ *  2. `Authentication`  — JS-accessible cookie written by `useSSOCallback` after
+ *                         ticket exchange. Works on custom domains / localhost too.
+ *
+ * NOTE: localStorage (`csw_token`) is NEVER accessible from Edge middleware.
+ * Custom-domain apps that rely solely on localStorage are handled by the client-side
+ * AuthGuard — middleware passes them through and lets the app's own guard redirect.
+ */
+function getAuthCookie(req: NextRequest): string | undefined {
+    return (
+        req.cookies.get("Authentication")?.value ||
+        req.cookies.get("__session")?.value  // Clerk compat fallback
+    );
+}
 
 export async function middleware(req: NextRequest) {
     const { pathname } = req.nextUrl;
 
-    const isProtected = PROTECTED_ROUTES.some((r) => pathname.startsWith(r));
-    const isAuthRoute = AUTH_ROUTES.some((r) => pathname.startsWith(r));
+    // ── 1. Check route type ──────────────────────────────────────────────────
+    const isPublic    = PUBLIC_PREFIXES.some((p) => pathname.startsWith(p));
+    const isProtected = PROTECTED_PREFIXES.some((p) => pathname.startsWith(p));
+    const authToken   = getAuthCookie(req);
+    const isAuthenticated = Boolean(authToken);
 
-    // Check for both custom and Clerk cookies to be safe
-    const authCookie = req.cookies.get("Authentication") || req.cookies.get("__session");
-    const isAuthenticated = Boolean(authCookie?.value);
-
-    // ── Protect guarded routes ──────────────────────────────────────────────
+    // ── 2. Guard protected routes AT THE EDGE ───────────────────────────────
+    // This is the fix for `GET /account 404 in 206ms`.
+    // Previously /account was not in the matcher, so Next.js would start rendering
+    // the layout, hit the client-side auth check in useEffect, fail, and log a 404.
+    // Now we intercept at the edge — before any page renders.
     if (isProtected && !isAuthenticated) {
         const loginUrl = new URL("/login", req.url);
-        // Only pass the relative path — never the full URL — to prevent open redirect
-        loginUrl.searchParams.set("redirect", toSafeRelative(req.url));
+        // Preserve the original destination so login can redirect back
+        loginUrl.searchParams.set("redirect", pathname + req.nextUrl.search);
         return NextResponse.redirect(loginUrl);
     }
 
-    // ── Handle auth routes (user already authenticated) ─────────────────────
-    if (isAuthRoute && isAuthenticated) {
-        // /sso is special — it ALWAYS processes regardless of auth state.
-        // It needs to be reachable even when authenticated so it can issue tickets.
+    // ── 3. Redirect authenticated users away from auth pages ────────────────
+    if (isPublic && isAuthenticated) {
+        // /sso is always open — even when authenticated it must be reachable
+        // to issue a ticket for another app's SSO flow.
         if (pathname.startsWith("/sso")) {
             return NextResponse.next();
         }
@@ -46,29 +82,27 @@ export async function middleware(req: NextRequest) {
         const redirectParam = req.nextUrl.searchParams.get("redirect");
 
         if (redirectParam) {
-            // Relative paths are always safe — redirect directly
+            // Relative paths are always safe
             if (redirectParam.startsWith("/")) {
                 return NextResponse.redirect(new URL(redirectParam, req.url));
             }
 
-            // ── Loop guard ─────────────────────────────────────────────────
-            // If the redirect target is our own auth domain, don't follow it —
-            // it means a double-encoded redirect sneaked through. Fall through
-            // to the default redirect instead.
+            // ── Loop guard ────────────────────────────────────────────────────
+            // If the redirect target is our own auth domain, bail out to default.
             const authHost = req.nextUrl.hostname;
             try {
                 const redirectHost = new URL(redirectParam).hostname;
                 if (redirectHost === authHost) {
-                    console.warn("[CSW Auth] Loop-guard triggered: redirect points to own domain, using default.");
+                    console.warn("[CSW Auth] Loop-guard: redirect targets own auth domain — using default.");
                 } else if (await isAllowedRedirect(redirectParam)) {
                     return NextResponse.redirect(new URL(redirectParam));
                 }
             } catch {
-                // Invalid URL in redirect param — ignore it
+                // Malformed URL — ignore
             }
         }
 
-        // Default: send to main platform or local dashboard
+        // Default landing for already-authenticated users hitting login/signup
         const defaultRedirect =
             process.env.NEXT_PUBLIC_DEFAULT_REDIRECT ||
             (process.env.NODE_ENV === "production"
@@ -77,18 +111,22 @@ export async function middleware(req: NextRequest) {
         return NextResponse.redirect(new URL(defaultRedirect));
     }
 
+    // ── 4. All other routes pass through ────────────────────────────────────
     return NextResponse.next();
 }
 
 export const config = {
     matcher: [
-        "/profile/:path*",
-        "/account/:path*",
-        "/dashboard/:path*",
+        // ── Auth routes (redirect authenticated users away) ──────────────────
         "/login",
         "/signup",
         "/forgot-password",
         "/reset-password",
         "/sso",
+        // ── Protected routes (redirect unauthenticated users to login) ───────
+        "/account/:path*",
+        "/dashboard/:path*",
+        "/profile/:path*",
+        "/invoices/:path*",
     ],
 };

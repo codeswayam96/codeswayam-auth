@@ -10,7 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import {
   User, Mail, Calendar, Shield, Pencil, Loader2, Trash2, AlertTriangle,
-  CreditCard, Crown, Zap, Package, ArrowRight, TrendingUp, Layers,
+  CreditCard, Crown, Zap, Package, ArrowRight, TrendingUp, Layers, Camera,
 } from "lucide-react";
 import { toast } from "sonner";
 import { updateProfile, deleteAccount, logout, fetchUserSubscriptions } from "@/lib/api";
@@ -18,6 +18,7 @@ import type { UserSubscription } from "@/lib/api";
 import { useAccount } from "../layout";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { BrandLoader } from "@/components/brand-loader";
 
 const roleColors: Record<string, string> = {
   superadmin: "bg-violet-100 text-violet-700",
@@ -60,7 +61,7 @@ function SubscriptionSummary() {
     return (
       <Card>
         <CardContent className="flex items-center justify-center py-8">
-          <Loader2 size={22} className="animate-spin text-muted-foreground" />
+          <BrandLoader size="sm" text="Syncing plans..." />
         </CardContent>
       </Card>
     );
@@ -180,6 +181,39 @@ export default function ProfilePage() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  // Avatar upload state
+  const [avatarPreview, setAvatarPreview] = useState<string | null>((user as any)?.avatarUrl ?? null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) { toast.error("Image must be under 2MB"); return; }
+
+    // Show instant preview
+    const reader = new FileReader();
+    reader.onload = (ev) => setAvatarPreview(ev.target?.result as string);
+    reader.readAsDataURL(file);
+
+    setUploadingAvatar(true);
+    try {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(r.result as string);
+        r.onerror = reject;
+        r.readAsDataURL(file);
+      });
+      const updated = await updateProfile({ avatarUrl: base64 } as any);
+      setUser(updated?.data ?? updated);
+      toast.success("Profile photo updated!");
+    } catch {
+      toast.error("Failed to upload photo — please try again");
+      setAvatarPreview(null);
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
   if (!user) return null;
 
   const handleSave = async () => {
@@ -237,8 +271,31 @@ export default function ProfilePage() {
         <CardContent className="space-y-6">
           {/* Avatar & Name */}
           <div className="flex items-center gap-4">
-            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-violet-500/20 to-indigo-500/20 border-2 border-primary/20 text-primary flex items-center justify-center text-xl font-bold">
-              {initials}
+            {/* Clickable avatar with upload overlay */}
+            <div className="relative group shrink-0">
+              <label htmlFor="avatar-upload" className="cursor-pointer">
+                <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-primary/20 bg-gradient-to-br from-violet-500/20 to-indigo-500/20 flex items-center justify-center text-xl font-bold text-primary">
+                  {avatarPreview ? (
+                    <img src={avatarPreview} alt="Avatar" className="w-full h-full object-cover" />
+                  ) : (
+                    initials
+                  )}
+                </div>
+                {/* Hover overlay */}
+                <div className="absolute inset-0 rounded-full bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                  {uploadingAvatar
+                    ? <Loader2 size={16} className="animate-spin text-white" />
+                    : <Camera size={16} className="text-white" />}
+                </div>
+              </label>
+              <input
+                id="avatar-upload"
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleAvatarChange}
+                disabled={uploadingAvatar}
+              />
             </div>
             <div className="flex-1">
               {editing ? (

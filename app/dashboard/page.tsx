@@ -378,7 +378,11 @@ export default function DashboardPage() {
     try {
       const res = await redeemCouponCode(couponCode);
       if (res.success) {
-        setRedeemSuccess(`Success! Awarded ${res.pointsAwarded} points.`);
+        if (res.type === "subscription" || res.type === "bundle") {
+          setRedeemSuccess(res.message || `Success! Activated free ${res.productName || res.bundleName || "plan"} subscription.`);
+        } else {
+          setRedeemSuccess(res.message || `Success! Awarded ${res.pointsAwarded} points.`);
+        }
         setCouponCode("");
       } else {
         setRedeemError(res.message);

@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Shield, Lock, Eye, EyeOff, Loader2, Key, Smartphone, LogOut, AlertCircle, CheckCircle, ChevronLeft, ChevronRight } from "lucide-react";
+import { Shield, Lock, Eye, EyeOff, Loader2, Key, Smartphone, LogOut, AlertCircle, CheckCircle, ChevronLeft, ChevronRight, CheckCircle2, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
 import { useAccount } from "../layout";
@@ -22,6 +22,62 @@ import {
   disable2FA,
   deleteAccount
 } from "@/lib/api";
+
+// ─── Password Strength Meter ──────────────────────────────────────────────────
+
+interface PasswordRule { label: string; test: (p: string) => boolean }
+
+const PASSWORD_RULES: PasswordRule[] = [
+  { label: "At least 8 characters",       test: p => p.length >= 8 },
+  { label: "Uppercase letter (A–Z)",       test: p => /[A-Z]/.test(p) },
+  { label: "Lowercase letter (a–z)",       test: p => /[a-z]/.test(p) },
+  { label: "Number (0–9)",                 test: p => /\d/.test(p) },
+  { label: "Special character (!@#$…)",   test: p => /[^A-Za-z0-9]/.test(p) },
+];
+
+const STRENGTH_CFG = [
+  { label: "Very Weak", color: "bg-red-500",    text: "text-red-600"    },
+  { label: "Weak",      color: "bg-orange-500", text: "text-orange-600" },
+  { label: "Fair",      color: "bg-amber-500",  text: "text-amber-600"  },
+  { label: "Strong",    color: "bg-blue-500",   text: "text-blue-600"   },
+  { label: "Very Strong",color:"bg-emerald-500",text: "text-emerald-600"},
+];
+
+function PasswordStrengthMeter({ password }: { password: string }) {
+  if (!password) return null;
+  const passed = PASSWORD_RULES.filter(r => r.test(password)).length;
+  const cfg = STRENGTH_CFG[Math.min(passed, 4)];
+  return (
+    <div className="mt-3 space-y-2.5">
+      {/* Bar */}
+      <div className="flex items-center gap-2">
+        <div className="flex-1 flex gap-1">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div
+              key={i}
+              className={`h-1.5 flex-1 rounded-full transition-all duration-300 ${i < passed ? cfg.color : "bg-gray-200"}`}
+            />
+          ))}
+        </div>
+        <span className={`text-[11px] font-bold ${cfg.text} whitespace-nowrap`}>{cfg.label}</span>
+      </div>
+      {/* Checklist */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
+        {PASSWORD_RULES.map(rule => {
+          const ok = rule.test(password);
+          return (
+            <div key={rule.label} className={`flex items-center gap-1.5 text-[11px] font-medium ${ok ? "text-emerald-700" : "text-gray-400"}`}>
+              {ok ? <CheckCircle2 size={11} className="text-emerald-600 shrink-0" /> : <XCircle size={11} className="text-gray-300 shrink-0" />}
+              {rule.label}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+
 
 interface Session {
   id: string;
@@ -219,8 +275,49 @@ export default function SecurityPage() {
 
   if (!user) return null;
 
+  // Security Score
+  const securityChecks = [
+    { label: 'Strong password set', done: !user.googleId, tip: 'Set a password in Change Password below' },
+    { label: 'Email verified', done: user.status === 'active', tip: 'Verify your email to unlock all features' },
+    { label: 'Two-factor authentication', done: twoFactorEnabled, tip: 'Enable 2FA above for +1 security point' },
+    { label: 'Google account linked', done: !!user.googleId, tip: 'Connect Google for faster sign-in' },
+  ];
+  const securityScore = securityChecks.filter(c => c.done).length;
+  const scoreColor = securityScore <= 1 ? 'bg-red-500' : securityScore === 2 ? 'bg-amber-500' : securityScore === 3 ? 'bg-blue-500' : 'bg-emerald-500';
+  const scoreLabel = securityScore <= 1 ? 'Poor' : securityScore === 2 ? 'Fair' : securityScore === 3 ? 'Good' : 'Excellent';
+
   return (
     <div className="space-y-6">
+      {/* Security Score Widget */}
+      <Card className="border-2 border-primary/20 bg-gradient-to-br from-primary/5 to-transparent">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <Shield size={18} className="text-primary" />
+              Security Score
+            </CardTitle>
+            <div className="flex items-center gap-2">
+              <span className={`text-xs font-bold px-2.5 py-1 rounded-full text-white ${scoreColor}`}>{scoreLabel}</span>
+              <span className="text-2xl font-bold">{securityScore}<span className="text-muted-foreground text-sm font-normal">/4</span></span>
+            </div>
+          </div>
+          <div className="mt-3 h-2 bg-secondary rounded-full overflow-hidden">
+            <div className={`h-full rounded-full transition-all duration-700 ${scoreColor}`} style={{ width: `${(securityScore / 4) * 100}%` }} />
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {securityChecks.map((check) => (
+              <div key={check.label} className={`flex items-center gap-2.5 px-3 py-2 rounded-xl border text-sm ${check.done ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-secondary border-border text-muted-foreground'}`}>
+                {check.done ? <CheckCircle size={14} className="text-emerald-600 shrink-0" /> : <AlertCircle size={14} className="text-amber-500 shrink-0" />}
+                <span className="font-medium flex-1">{check.label}</span>
+                {!check.done && <span className="text-[10px] opacity-60 hidden sm:block">{check.tip}</span>}
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Password Management - Hidden for Google Auth users */}
       <Card>
         <CardHeader>
@@ -295,6 +392,8 @@ export default function SecurityPage() {
                     {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                   </button>
                 </div>
+                {/* Real-time strength meter */}
+                <PasswordStrengthMeter password={newPassword} />
               </div>
 
               <div className="space-y-2">

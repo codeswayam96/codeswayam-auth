@@ -6,6 +6,7 @@ import { fetchInvoiceById } from "@/lib/api";
 import type { Invoice } from "@/lib/api";
 import { Loader2, Printer, ArrowLeft, CheckCircle2, Download } from "lucide-react";
 import Link from "next/link";
+import { BrandLoader } from "@/components/brand-loader";
 
 function formatCurrency(amount: number, currency: string) {
   const val = amount / 100;
@@ -37,11 +38,7 @@ export default function InvoiceReceiptPage() {
   }, [id]);
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <Loader2 size={28} className="animate-spin text-gray-400" />
-      </div>
-    );
+    return <BrandLoader fullScreen size="lg" text="Syncing invoice receipt..." />;
   }
 
   if (error || !invoice) {

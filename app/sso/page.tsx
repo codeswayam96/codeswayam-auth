@@ -4,6 +4,7 @@ import { useEffect, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { isAllowedRedirect } from "@/lib/domains";
+import { BrandLoader } from "@/components/brand-loader";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 
@@ -92,26 +93,14 @@ function SSOHandler() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [redirectUrl]);
 
-    return (
-        <div className="flex min-h-screen flex-col items-center justify-center p-4 bg-background">
-            <div className="text-center space-y-4">
-                <Loader2 className="w-10 h-10 animate-spin text-primary mx-auto" />
-                <h1 className="text-xl font-semibold">Authorizing...</h1>
-                <p className="text-muted-foreground text-sm">
-                    Securely transferring your session.
-                </p>
-            </div>
-        </div>
-    );
+    return <BrandLoader fullScreen size="lg" text="Authorizing secure connection..." />;
 }
 
 export default function SSOPage() {
     return (
         <Suspense
             fallback={
-                <div className="flex min-h-screen items-center justify-center">
-                    <Loader2 className="w-8 h-8 animate-spin text-primary" />
-                </div>
+                <BrandLoader fullScreen size="lg" text="Starting authorization handshake..." />
             }
         >
             <SSOHandler />

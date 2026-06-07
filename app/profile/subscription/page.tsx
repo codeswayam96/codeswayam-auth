@@ -249,10 +249,10 @@ export default function SubscriptionPage() {
         ? getHiddenProductIds(activeSubs, plans.products)
         : new Set<number>();
 
-    const visibleProducts = plans?.products.filter(p => !hiddenIds.has(p.id)) ?? [];
+    const visibleProducts = plans?.products.filter(p => !hiddenIds.has(Number(p.id))) ?? [];
     // Bundles: hide if user already has an active bundle subscription for it
-    const activeBundleIds = new Set(activeSubs.map(s => s.bundleId).filter(Boolean));
-    const visibleBundles = plans?.bundles.filter(b => !activeBundleIds.has(b.id)) ?? [];
+    const activeBundleIds = new Set(activeSubs.map(s => s.bundleId).filter(Boolean) as number[]);
+    const visibleBundles = plans?.bundles.filter(b => !activeBundleIds.has(Number(b.id))) ?? [];
 
     const hasUpgrades = visibleProducts.length > 0 || visibleBundles.length > 0;
 

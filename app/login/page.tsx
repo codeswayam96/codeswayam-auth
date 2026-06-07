@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Loader2, Zap, Eye, EyeOff, AlertCircle, MailCheck, CheckCircle, Smartphone } from "lucide-react";
 import { checkUserAuth, isAllowedRedirect } from "@/lib/auth-redirect";
+import { BrandLoader } from "@/components/brand-loader";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 
@@ -456,11 +457,7 @@ function LoginPageInner() {
     }, [getRedirectUrl]);
 
     if (isCheckingAuth) {
-        return (
-            <div className="flex min-h-screen items-center justify-center">
-                <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-            </div>
-        );
+        return <BrandLoader fullScreen size="lg" text="Verifying your credentials..." />;
     }
 
     const redirectUrl = getRedirectUrl();
@@ -503,9 +500,7 @@ export default function LoginPage() {
     return (
         <Suspense
             fallback={
-                <div className="flex min-h-screen items-center justify-center">
-                    <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-                </div>
+                <BrandLoader fullScreen size="lg" text="Starting secure sign-in..." />
             }
         >
             <LoginPageInner />

@@ -316,27 +316,36 @@ npm run lint             # Run ESLint
 
 ---
 
-## 💳 Razorpay Integration
+## 💳 Razorpay Integration & Billing UI
 
 ### Payment Processing
 
+The auth service implements the `<RazorpayButton>` component to initiate checkout flows for credit packs or SaaS subscription plans (including upgrades):
+
 ```typescript
-// Razorpay checkout component
-<RazorpayCheckout
-  amount={amount}
-  planId={planId}
-  onSuccess={handleSuccess}
-  onError={handleError}
+import { RazorpayButton } from "@/components/razorpay-checkout";
+
+// Simple subscription purchase
+<RazorpayButton
+  saasProductId={plan.id}
+  billingCycle="monthly"
+  currency="INR"
+  planName={plan.name}
+/>
+
+// Upgrade subscription (supports proration calculations)
+<RazorpayButton
+  saasProductId={plan.id}
+  billingCycle="monthly"
+  currency="INR"
+  planName={plan.name}
+  upgradeFromSubscriptionId={currentActiveSub.id}
 />
 ```
 
-### Payment Flow
-1. User clicks "Buy Credits" or upgrade plan
-2. Razorpay modal opens
-3. User enters payment details
-4. Payment processed
-5. Credits added to account
-6. Confirmation email sent
+### Upgrade & Cancellation Workflows
+- **Proration Price Breakdown**: When upgrading a plan inside the `UpgradeModal`, the interface estimates the unused subscription time credit and displays a breakdown of the new plan price, unused credit deduction (-₹X), referral points discount, and final net payment due today.
+- **7-Day Cancellation Lock**: The subscription dashboard cards compute whether an active plan was purchased more than 7 days ago. If so, the cancel trash button is disabled and renders a Lock icon with a descriptive tooltip explaining that cancellation is locked.
 
 ---
 

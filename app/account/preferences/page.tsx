@@ -5,10 +5,11 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Bell, Globe, Palette, Download, Loader2, UserX, AlertTriangle, AlertCircle } from "lucide-react";
+import { Bell, Globe, Palette, Download, Loader2, UserX, AlertTriangle, AlertCircle, BellRing, BellOff } from "lucide-react";
 import { toast } from "sonner";
-import { fetchPreferences, updatePreferences, apiFetch, type UserPreferences } from "@/lib/api";
+import { fetchPreferences, updatePreferences, apiFetch, fetchVapidPublicKey, registerPushSubscription, unregisterPushSubscription, type UserPreferences } from "@/lib/api";
 import { useAccount } from "../layout";
+import { BrandLoader } from "@/components/brand-loader";
 
 export default function PreferencesPage() {
   const { user } = useAccount();
@@ -16,11 +17,31 @@ export default function PreferencesPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
+  // ── Push Notifications state ──────────────────────────────────────────
+  const [pushSupported, setPushSupported] = useState(false);
+  const [pushSubscribed, setPushSubscribed] = useState(false);
+  const [pushLoading, setPushLoading] = useState(false);
+
   useEffect(() => {
     fetchPreferences()
       .then(setPrefs)
       .catch(() => toast.error("Failed to load preferences"))
       .finally(() => setLoading(false));
+
+    // Check push notification support & current subscription
+    if (typeof window !== "undefined" && "serviceWorker" in navigator && "PushManager" in window) {
+      setPushSupported(true);
+      // Register the service worker at mount to unlock navigator.serviceWorker.ready
+      navigator.serviceWorker.register("/sw.js")
+        .then(() => navigator.serviceWorker.ready)
+        .then(async (reg) => {
+          const existing = await reg.pushManager.getSubscription();
+          setPushSubscribed(!!existing);
+        })
+        .catch((err) => {
+          console.error("Service Worker registration failed:", err);
+        });
+    }
   }, []);
 
   const handleUpdate = async (data: Partial<UserPreferences>) => {
@@ -68,6 +89,51 @@ export default function PreferencesPage() {
     }
   };
 
+  // ── Push Notification helpers ─────────────────────────────────────────
+  function urlBase64ToUint8Array(base64String: string) {
+    const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+    const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+    const rawData = window.atob(base64);
+    return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
+  }
+
+  const handleTogglePush = async () => {
+    setPushLoading(true);
+    try {
+      // Explicitly request notification permission first
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        throw new Error("Push notifications permission denied by the browser. Please reset permission settings for this site.");
+      }
+
+      const reg = await navigator.serviceWorker.ready;
+      if (pushSubscribed) {
+        // Unsubscribe
+        const sub = await reg.pushManager.getSubscription();
+        if (sub) {
+          await unregisterPushSubscription(sub.endpoint);
+          await sub.unsubscribe();
+        }
+        setPushSubscribed(false);
+        toast.success("Push notifications disabled");
+      } else {
+        // Subscribe
+        const { publicKey } = await fetchVapidPublicKey();
+        const sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(publicKey),
+        });
+        await registerPushSubscription(sub.toJSON() as PushSubscriptionJSON);
+        setPushSubscribed(true);
+        toast.success("Push notifications enabled!");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update push notifications");
+    } finally {
+      setPushLoading(false);
+    }
+  };
+
   const [deleteLoading, setDeleteLoading] = useState(false);
   const handleDeleteRequest = async () => {
     if (!confirm("Are you sure you want to delete your account? This will initiate a 14-day pending period before permanent deletion.")) return;
@@ -85,11 +151,7 @@ export default function PreferencesPage() {
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <BrandLoader size="md" text="Syncing user preferences..." />;
   }
 
   if (!prefs) return null;
@@ -170,6 +232,53 @@ export default function PreferencesPage() {
               onCheckedChange={(val) => handleUpdate({ newsletter: val })}
             />
           </div>
+
+          {/* Push Notifications row */}
+          {pushSupported && (
+            <div className={`flex items-center justify-between p-4 border rounded-lg transition-colors
+              ${pushSubscribed ? "border-violet-200 bg-violet-50/40" : ""}`}>
+              <div className="flex items-start gap-3">
+                {pushSubscribed
+                  ? <BellRing size={16} className="mt-0.5 shrink-0 text-violet-600" />
+                  : <BellOff size={16} className="mt-0.5 shrink-0 text-gray-400" />}
+                <div>
+                  <p className="font-medium">
+                    Browser Push Notifications
+                    {pushSubscribed && (
+                      <span className="ml-2 text-[10px] font-bold text-violet-700 bg-violet-100 border border-violet-200 px-1.5 py-0.5 rounded-full">
+                        Active
+                      </span>
+                    )}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {pushSubscribed
+                      ? "You're receiving live alerts in your browser even when the tab is closed."
+                      : "Get real-time alerts for payments, security events, and product updates — no tab needed."}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={handleTogglePush}
+                disabled={pushLoading}
+                className={`relative ml-4 shrink-0 inline-flex h-6 w-11 items-center rounded-full border-2 transition-colors focus:outline-none disabled:opacity-60
+                  ${pushSubscribed
+                    ? "bg-violet-600 border-violet-600"
+                    : "bg-gray-200 border-gray-200"}`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform
+                    ${pushSubscribed ? "translate-x-5" : "translate-x-0.5"}`}
+                />
+              </button>
+            </div>
+          )}
+
+          {!pushSupported && (
+            <div className="flex items-center gap-2 p-3 rounded-lg border border-amber-200 bg-amber-50 text-amber-700 text-xs">
+              <AlertCircle size={13} className="shrink-0" />
+              Browser push notifications are not supported in this environment.
+            </div>
+          )}
         </CardContent>
       </Card>
 

@@ -10,7 +10,8 @@ import {
   AlertCircle, Loader2, TrendingUp, Clock, ShoppingCart,
   ChevronRight, Package, BookOpen, Shield, Wallet, Tag,
 } from "lucide-react";
-import { fetchUserSubscriptions, fetchBillingOverview } from "@/lib/api";
+import { fetchUserSubscriptions, fetchBillingOverview, fetchMyWallet } from "@/lib/api";
+import { BrandLoader } from "@/components/brand-loader";
 
 interface SaaSProduct {
   id: string;
@@ -26,6 +27,7 @@ export default function AccountPage() {
   const { user } = useAccount();
   const [products, setProducts] = useState<SaaSProduct[]>([]);
   const [billing,  setBilling]  = useState<any>(null);
+  const [creditBalance, setCreditBalance] = useState<number | null>(null);
   const [loading,  setLoading]  = useState(true);
   const [error,    setError]    = useState("");
 
@@ -34,9 +36,10 @@ export default function AccountPage() {
   useEffect(() => {
     (async () => {
       try {
-        const [subsData, billingData] = await Promise.all([
+        const [subsData, billingData, walletData] = await Promise.all([
           fetchUserSubscriptions(),
           fetchBillingOverview(),
+          fetchMyWallet().catch(() => null),
         ]);
         const subs = Array.isArray(subsData) ? subsData : (subsData as any).subscriptions || [];
         setProducts(subs.map((s: any) => ({
@@ -49,6 +52,7 @@ export default function AccountPage() {
           tag:         s.productTag || "Other Apps",
         })));
         setBilling(billingData);
+        if (walletData?.wallet) setCreditBalance(walletData.wallet.balance);
       } catch (err: any) {
         setError(err.message || "Failed to load data");
       } finally {
@@ -106,7 +110,7 @@ export default function AccountPage() {
       </div>
 
       {/* ── Stat cards ───────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4 xl:grid-cols-5">
 
         <Card className="overflow-hidden border-gray-100 shadow-sm">
           <CardContent className="p-5">
@@ -172,6 +176,27 @@ export default function AccountPage() {
           </CardContent>
         </Card>
 
+        {/* Credit Balance card */}
+        <Link href="/account/credits" className="col-span-2 md:col-span-1">
+          <Card className="overflow-hidden border-indigo-100 shadow-sm bg-gradient-to-br from-indigo-50 to-violet-50 h-full hover:shadow-md hover:-translate-y-0.5 transition-all cursor-pointer">
+            <CardContent className="p-5">
+              <div className="flex items-start justify-between">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-500">Credits</p>
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-100">
+                  <Zap size={15} className="text-indigo-600" />
+                </div>
+              </div>
+              <p className="mt-3 text-3xl font-extrabold text-indigo-900">
+                {creditBalance !== null ? creditBalance.toLocaleString() : "—"}
+              </p>
+              <p className="text-[10px] font-bold text-indigo-400 mt-0.5">pts available</p>
+              <div className="mt-3 h-1 w-full rounded-full bg-indigo-100">
+                <div className="h-1 w-1/2 rounded-full bg-indigo-400" />
+              </div>
+            </CardContent>
+          </Card>
+        </Link>
+
       </div>
 
       {/* ── Error ────────────────────────────────────────────────────── */}
@@ -206,12 +231,7 @@ export default function AccountPage() {
 
       {/* ── Subscriptions ────────────────────────────────────────────── */}
       {loading ? (
-        <div className="flex min-h-[160px] items-center justify-center">
-          <div className="flex flex-col items-center gap-3">
-            <Loader2 size={24} className="animate-spin text-violet-600" />
-            <p className="text-sm text-gray-400">Syncing subscriptions…</p>
-          </div>
-        </div>
+        <BrandLoader size="sm" text="Syncing subscriptions..." className="min-h-[160px] border border-gray-100 bg-white" />
 
       ) : products.filter(p => p.status === "active").length > 0 ? (
         <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">

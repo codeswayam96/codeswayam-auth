@@ -21,6 +21,7 @@ import {
     Loader2 
 } from "lucide-react";
 import { toast } from "sonner";
+import { BrandLoader } from "@/components/brand-loader";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 
@@ -221,9 +222,7 @@ export default function AdminDomainsPage() {
                 </CardHeader>
                 <CardContent>
                     {loading ? (
-                        <div className="flex justify-center py-8">
-                            <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-                        </div>
+                        <BrandLoader size="md" text="Loading trusted domains..." />
                     ) : domains.length === 0 ? (
                         <div className="text-center py-8 text-muted-foreground border-2 border-dashed rounded-xl">
                             <Globe className="w-10 h-10 mx-auto mb-2 opacity-20" />

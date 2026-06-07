@@ -3,10 +3,11 @@
 import { useState, useEffect, createContext, useContext } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Home, User, CreditCard, Settings, LogOut, Zap, Loader2, Shield, DollarSign, LayoutDashboard, Coins, Users, Menu, X, ChevronRight } from "lucide-react";
+import { Home, User, CreditCard, Settings, LogOut, Zap, Loader2, Shield, DollarSign, LayoutDashboard, Coins, Users, Menu, X, ChevronRight, FileText, Activity, Bell, LayoutGrid, AlertTriangle, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { fetchProfile, logout } from "@/lib/api";
 import { toast } from "sonner";
+import { BrandLoader } from "@/components/brand-loader";
 
 interface UserProfile {
   id: number;
@@ -35,10 +36,14 @@ const navItems = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
   { href: "/account", icon: Home, label: "Overview" },
   { href: "/account/profile", icon: User, label: "Profile" },
+  { href: "/account/apps", icon: LayoutGrid, label: "My Apps" },
   { href: "/account/subscriptions", icon: CreditCard, label: "Subscriptions" },
   { href: "/account/security", icon: Shield, label: "Security" },
   { href: "/account/billing", icon: DollarSign, label: "Billing" },
   { href: "/account/credits", icon: Coins, label: "Credits" },
+  { href: "/invoices", icon: FileText, label: "Invoices" },
+  { href: "/account/notifications", icon: Bell, label: "Notifications" },
+  { href: "/account/activity", icon: Activity, label: "Activity" },
   { href: "/account/referrals", icon: Users, label: "Referrals" },
   { href: "/account/preferences", icon: Settings, label: "Preferences" },
 ];
@@ -85,15 +90,38 @@ export default function AccountLayout({ children }: { children: React.ReactNode 
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <BrandLoader fullScreen text="Verifying your credentials..." />;
   }
 
   const displayName = user?.name || user?.email?.split("@")[0] || "User";
   const initials = displayName.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
+
+  // ── Account Status Banner ─────────────────────────────────────────────────
+  const STATUS_BANNERS: Record<string, { bg: string; border: string; text: string; icon: React.ReactNode; title: string; body: string }> = {
+    suspended: {
+      bg: "bg-red-50", border: "border-red-200", text: "text-red-800",
+      icon: <XCircle size={16} className="text-red-600 shrink-0" />,
+      title: "Account Suspended",
+      body: user?.rejectionReason
+        ? `Your account has been suspended. Reason: ${user.rejectionReason}. Please contact support.`
+        : "Your account has been suspended. Please contact support@codeswayam.com for assistance.",
+    },
+    rejected: {
+      bg: "bg-red-50", border: "border-red-200", text: "text-red-800",
+      icon: <XCircle size={16} className="text-red-600 shrink-0" />,
+      title: "Account Rejected",
+      body: user?.rejectionReason
+        ? `Your account was rejected. Reason: ${user.rejectionReason}.`
+        : "Your account registration was not approved. Contact support for details.",
+    },
+    pending_deletion: {
+      bg: "bg-amber-50", border: "border-amber-200", text: "text-amber-800",
+      icon: <AlertTriangle size={16} className="text-amber-600 shrink-0" />,
+      title: "Deletion Requested",
+      body: "Your account is scheduled for deletion and is pending admin review. You can still cancel this request by contacting support.",
+    },
+  };
+  const statusBanner = user ? STATUS_BANNERS[user.status] : null;
 
   return (
     <AccountContext.Provider value={{ user, setUser, loading }}>
@@ -144,6 +172,25 @@ export default function AccountLayout({ children }: { children: React.ReactNode 
             </div>
           </div>
         </header>
+
+        {/* ── Account Status Banner ── */}
+        {statusBanner && (
+          <div className={`${statusBanner.bg} ${statusBanner.border} border-b px-4 sm:px-6 py-3`}>
+            <div className="max-w-[1440px] mx-auto flex items-center gap-3">
+              {statusBanner.icon}
+              <div className="min-w-0">
+                <span className={`font-bold text-sm ${statusBanner.text}`}>{statusBanner.title}: </span>
+                <span className={`text-sm ${statusBanner.text} opacity-90`}>{statusBanner.body}</span>
+              </div>
+              <a
+                href="mailto:support@codeswayam.com"
+                className={`ml-auto shrink-0 text-xs font-bold underline ${statusBanner.text} whitespace-nowrap`}
+              >
+                Contact Support
+              </a>
+            </div>
+          </div>
+        )}
 
         {/* Mobile Horizontal Nav (Sticky below header) */}
         <div className="md:hidden sticky top-16 z-30 bg-background/80 backdrop-blur border-b overflow-x-auto no-scrollbar">

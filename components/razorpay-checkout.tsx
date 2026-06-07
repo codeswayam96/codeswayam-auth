@@ -61,6 +61,7 @@ export interface RazorpayButtonProps {
    * returnUrl="/account/subscriptions"
    */
   returnUrl?: string;
+  upgradeFromSubscriptionId?: number;
 }
 
 // ─── Component ─────────────────────────────────────────────────────────────────
@@ -81,6 +82,7 @@ export function RazorpayButton({
   onError,
   usePoints = false,
   returnUrl,
+  upgradeFromSubscriptionId,
 }: RazorpayButtonProps) {
   const [loading, setLoading] = useState(false);
 
@@ -137,6 +139,7 @@ export function RazorpayButton({
         billingCycle,
         currency,
         usePoints,
+        upgradeFromSubscriptionId,
       });
 
       // Free-tier shortcut — backend may return { free: true }
@@ -185,6 +188,7 @@ export function RazorpayButton({
               currency,
               amount: orderData.amount,
               pointsUsed: (orderData as any).pointsUsed,
+              upgradeFromSubscriptionId,
             });
 
             toast.success(`🎉 Subscribed to ${planName}!`);
@@ -215,7 +219,7 @@ export function RazorpayButton({
     }
   }, [
     loading, saasProductId, bundleId, billingCycle, currency,
-    planName, onSuccess, onError, usePoints,
+    planName, onSuccess, onError, usePoints, upgradeFromSubscriptionId,
   ]);
 
   return (

@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { BrandLoader } from "@/components/brand-loader";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 
@@ -115,7 +116,7 @@ export default function AdminSecurityPage() {
         return <Terminal className="w-4 h-4 text-muted-foreground" />;
     };
 
-    if (loading) return <div className="flex justify-center py-20"><Loader2 className="animate-spin" /></div>;
+    if (loading) return <BrandLoader size="md" text="Loading security settings..." />;
 
     return (
         <div className="space-y-8 pb-10">

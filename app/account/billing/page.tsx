@@ -11,6 +11,7 @@ import {
   ArrowUpRight, Package,
 } from "lucide-react";
 import Link from "next/link";
+import { BrandLoader } from "@/components/brand-loader";
 import { fetchBillingOverview, fetchUserInvoices } from "@/lib/api";
 import type { BillingOverview, Invoice } from "@/lib/api";
 
@@ -158,11 +159,7 @@ export default function BillingPage() {
   }, []);
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 size={28} className="animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <BrandLoader size="md" text="Loading billing history..." />;
   }
 
   if (error) {
