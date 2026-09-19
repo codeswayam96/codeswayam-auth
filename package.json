@@ -11,6 +11,7 @@
   "dependencies": {
     "@clerk/nextjs": "^7.0.4",
     "@codeswayam/analytics": "^0.1.2",
+    "@codeswayam/access": "^1.0.0",
     "@codeswayam/api-client": "^1.3.1",
     "@codeswayam/auth": "^2.5.1",
     "@codeswayam/ui": "^1.2.1",

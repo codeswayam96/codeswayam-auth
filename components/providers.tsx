@@ -3,6 +3,7 @@
 import { ReactNode, useState, useEffect, createContext, useContext } from "react";
 import { GoogleOAuthProvider } from "@react-oauth/google";
 import { AuthModeProvider } from "@/lib/auth-mode";
+import { AccessProvider } from "@codeswayam/access";
 
 interface AuthContextType {
     user: any;
@@ -69,7 +70,9 @@ export function Providers({ children }: { children: ReactNode }) {
         <AuthContext.Provider value={{ user, loading }}>
             <AuthModeProvider>
                 <GoogleOAuthProvider clientId={process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || ""}>
-                    {children}
+                    <AccessProvider apiUrl={process.env.NEXT_PUBLIC_API_URL}>
+                        {children}
+                    </AccessProvider>
                 </GoogleOAuthProvider>
             </AuthModeProvider>
         </AuthContext.Provider>

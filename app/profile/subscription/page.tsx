@@ -19,6 +19,8 @@ import {
     RefreshCw,
     Package,
     CheckCircle2,
+    Clock,
+    RefreshCcw,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
@@ -288,33 +290,74 @@ export default function SubscriptionPage() {
                         </div>
                     </CardHeader>
                     <CardContent className="space-y-3">
-                        {activeSubs.map(sub => (
-                            <div key={sub.id} className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
-                                        <Zap size={14} className="text-primary" />
+                        {activeSubs.map(sub => {
+                            const isExpired = sub.status === "active" && !!sub.expiresAt && new Date(sub.expiresAt).getTime() < Date.now();
+                            return (
+                                <div
+                                    key={sub.id}
+                                    className="flex items-center justify-between p-3 rounded-lg border"
+                                    style={isExpired
+                                        ? { backgroundColor: "#fff5f5", borderColor: "#fca5a5" }
+                                        : { backgroundColor: "rgba(0,0,0,0.03)", borderColor: "rgba(0,0,0,0.08)" }
+                                    }
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div
+                                            className="w-8 h-8 rounded-lg flex items-center justify-center"
+                                            style={isExpired ? { backgroundColor: "#fee2e2" } : {}}
+                                        >
+                                            {isExpired
+                                                ? <Clock size={14} className="text-red-500" />
+                                                : <Zap size={14} className="text-primary" />}
+                                        </div>
+                                        <div>
+                                            <p className={`text-sm font-medium ${isExpired ? "text-gray-500" : ""}`}>
+                                                {sub.productName || sub.bundleName || "Plan"}
+                                            </p>
+                                            <p className={`text-xs capitalize ${isExpired ? "text-red-500 font-semibold" : "text-muted-foreground"}`}>
+                                                {sub.billingCycle} · {sub.currency} {sub.amount ? formatPrice(sub.amount, sub.currency as Currency) : "Free"}
+                                                {sub.expiresAt && (
+                                                    isExpired
+                                                        ? ` · Expired ${new Date(sub.expiresAt).toLocaleDateString()}`
+                                                        : ` · Renews ${new Date(sub.expiresAt).toLocaleDateString()}`
+                                                )}
+                                            </p>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <p className="text-sm font-medium">{sub.productName || sub.bundleName || "Plan"}</p>
-                                        <p className="text-xs text-muted-foreground capitalize">
-                                            {sub.billingCycle} · {sub.currency} {sub.amount ? formatPrice(sub.amount, sub.currency as Currency) : "Free"}
-                                            {sub.expiresAt && ` · Renews ${new Date(sub.expiresAt).toLocaleDateString()}`}
-                                        </p>
+                                    <div className="flex items-center gap-2">
+                                        {isExpired ? (
+                                            <>
+                                                <Badge className="text-xs bg-red-100 text-red-700 border border-red-200 hover:bg-red-100">
+                                                    Expired
+                                                </Badge>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-7 px-2 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                                    asChild
+                                                >
+                                                    <a href="/dashboard">
+                                                        <RefreshCcw size={12} className="mr-1" /> Renew
+                                                    </a>
+                                                </Button>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Badge variant="success" className="text-xs">Active</Badge>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-7 px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                                    onClick={() => setCancelId(sub.id)}
+                                                >
+                                                    Cancel
+                                                </Button>
+                                            </>
+                                        )}
                                     </div>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                    <Badge variant="success" className="text-xs">Active</Badge>
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="h-7 px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
-                                        onClick={() => setCancelId(sub.id)}
-                                    >
-                                        Cancel
-                                    </Button>
-                                </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </CardContent>
                 </Card>
             )}

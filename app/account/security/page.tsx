@@ -1,263 +1,46 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+/**
+ * Security Page — orchestrator.
+ * Security score widget is kept here since it depends on user context
+ * and twoFactorEnabled state shared across sections.
+ */
+
+import { useEffect, useState } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Shield, Lock, Eye, EyeOff, Loader2, Key, Smartphone, LogOut, AlertCircle, CheckCircle, ChevronLeft, ChevronRight, CheckCircle2, XCircle } from "lucide-react";
-import { toast } from "sonner";
-import Link from "next/link";
-import { useAccount } from "../layout";
+import { Button } from "@/components/ui/button";
 import {
-  changePassword,
-  fetchSessions,
-  revokeSession,
-  revokeAllSessions,
-  generate2FA,
-  enable2FA,
-  disable2FA,
-  deleteAccount
-} from "@/lib/api";
-
-// ─── Password Strength Meter ──────────────────────────────────────────────────
-
-interface PasswordRule { label: string; test: (p: string) => boolean }
-
-const PASSWORD_RULES: PasswordRule[] = [
-  { label: "At least 8 characters",       test: p => p.length >= 8 },
-  { label: "Uppercase letter (A–Z)",       test: p => /[A-Z]/.test(p) },
-  { label: "Lowercase letter (a–z)",       test: p => /[a-z]/.test(p) },
-  { label: "Number (0–9)",                 test: p => /\d/.test(p) },
-  { label: "Special character (!@#$…)",   test: p => /[^A-Za-z0-9]/.test(p) },
-];
-
-const STRENGTH_CFG = [
-  { label: "Very Weak", color: "bg-red-500",    text: "text-red-600"    },
-  { label: "Weak",      color: "bg-orange-500", text: "text-orange-600" },
-  { label: "Fair",      color: "bg-amber-500",  text: "text-amber-600"  },
-  { label: "Strong",    color: "bg-blue-500",   text: "text-blue-600"   },
-  { label: "Very Strong",color:"bg-emerald-500",text: "text-emerald-600"},
-];
-
-function PasswordStrengthMeter({ password }: { password: string }) {
-  if (!password) return null;
-  const passed = PASSWORD_RULES.filter(r => r.test(password)).length;
-  const cfg = STRENGTH_CFG[Math.min(passed, 4)];
-  return (
-    <div className="mt-3 space-y-2.5">
-      {/* Bar */}
-      <div className="flex items-center gap-2">
-        <div className="flex-1 flex gap-1">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <div
-              key={i}
-              className={`h-1.5 flex-1 rounded-full transition-all duration-300 ${i < passed ? cfg.color : "bg-gray-200"}`}
-            />
-          ))}
-        </div>
-        <span className={`text-[11px] font-bold ${cfg.text} whitespace-nowrap`}>{cfg.label}</span>
-      </div>
-      {/* Checklist */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
-        {PASSWORD_RULES.map(rule => {
-          const ok = rule.test(password);
-          return (
-            <div key={rule.label} className={`flex items-center gap-1.5 text-[11px] font-medium ${ok ? "text-emerald-700" : "text-gray-400"}`}>
-              {ok ? <CheckCircle2 size={11} className="text-emerald-600 shrink-0" /> : <XCircle size={11} className="text-gray-300 shrink-0" />}
-              {rule.label}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-
-
-interface Session {
-  id: string;
-  device: string;
-  location: string;
-  userAgent: string | null;
-  ipAddress: string;
-  lastActive: string;
-  createdAt: string;
-}
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+  DialogDescription, DialogFooter,
+} from "@/components/ui/dialog";
+import { AlertCircle, CheckCircle, Loader2, Shield } from "lucide-react";
+import { toast } from "sonner";
+import { deleteAccount } from "@/lib/api";
+import { useAccount } from "../layout";
+import { PasswordSection, TwoFactorSection, SessionsSection } from "./_components";
 
 export default function SecurityPage() {
   const { user } = useAccount();
-  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
-  const [showNewPassword, setShowNewPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [changingPassword, setChangingPassword] = useState(false);
-
-  const [twoFactorEnabled, setTwoFactorEnabled] = useState(user?.twoFactorEnabled || false);
-
-  useEffect(() => {
-    if (user) {
-      setTwoFactorEnabled(user.twoFactorEnabled);
-    }
-  }, [user]);
-  const [showingTwoFactorSetup, setShowingTwoFactorSetup] = useState(false);
-  const [qrCode, setQrCode] = useState("");
-  const [setupSecret, setSetupSecret] = useState("");
-  const [setupToken, setSetupToken] = useState("");
-  const [setupLoading, setSetupLoading] = useState(false);
-
-  const start2FASetup = async () => {
-    setSetupLoading(true);
-    try {
-      const data = await generate2FA();
-      setQrCode(data.qrCodeDataUrl);
-      setSetupSecret(data.secret);
-      setShowingTwoFactorSetup(true);
-    } catch (err: any) {
-      toast.error(err.message);
-    } finally {
-      setSetupLoading(false);
-    }
-  };
-
-  const verifyAndEnable2FA = async () => {
-    setSetupLoading(true);
-    try {
-      await enable2FA(setupSecret, setupToken);
-      setTwoFactorEnabled(true);
-      setShowingTwoFactorSetup(false);
-      setSetupToken("");
-      toast.success("Two-factor authentication enabled successfully");
-    } catch (err: any) {
-      toast.error(err.message);
-    } finally {
-      setSetupLoading(false);
-    }
-  };
-
-  const handleDisable2FA = async () => {
-    setSetupLoading(true);
-    try {
-      await disable2FA();
-      setTwoFactorEnabled(false);
-      toast.success("Two-factor authentication disabled");
-    } catch (err: any) {
-      toast.error(err.message);
-    } finally {
-      setSetupLoading(false);
-    }
-  };
-
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [loadingSessions, setLoadingSessions] = useState(true);
-
-  const loadSessions = async () => {
-    setLoadingSessions(true);
-    try {
-      const data = await fetchSessions();
-      setSessions(data);
-    } catch (err) {
-      console.error("Failed to fetch sessions", err);
-    } finally {
-      setLoadingSessions(false);
-    }
-  };
-
-  useEffect(() => {
-    loadSessions();
-  }, []);
-
-  const [revokeOpen, setRevokeOpen] = useState<string | null>(null);
-  const [revoking, setRevoking] = useState<string | null>(null);
-
-  // Sessions pagination
-  const SESSIONS_PER_PAGE = 5;
-  const [sessionsPage, setSessionsPage] = useState(1);
-  const sessionsTotalPages = Math.max(1, Math.ceil(sessions.length / SESSIONS_PER_PAGE));
-  const paginatedSessions = sessions.slice((sessionsPage - 1) * SESSIONS_PER_PAGE, sessionsPage * SESSIONS_PER_PAGE);
-
-  const handleChangePassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (newPassword !== confirmPassword) {
-      toast.error("Passwords do not match");
-      return;
-    }
-
-    if (newPassword.length < 8) {
-      toast.error("Password must be at least 8 characters");
-      return;
-    }
-
-    setChangingPassword(true);
-    try {
-      await changePassword(currentPassword, newPassword);
-      toast.success("Password changed successfully");
-      setCurrentPassword("");
-      setNewPassword("");
-      setConfirmPassword("");
-    } catch (err: any) {
-      toast.error(err.message || "Failed to change password");
-    } finally {
-      setChangingPassword(false);
-    }
-  };
-
-  const parseUserAgent = (ua: string | null) => {
-    if (!ua) return "Unknown Device";
-    if (ua.includes("Windows")) {
-        if (ua.includes("Chrome")) return "Chrome on Windows";
-        if (ua.includes("Firefox")) return "Firefox on Windows";
-        if (ua.includes("Edg")) return "Edge on Windows";
-        return "Windows Device";
-    }
-    if (ua.includes("Macintosh")) {
-        if (ua.includes("Chrome")) return "Chrome on macOS";
-        if (ua.includes("Safari") && !ua.includes("Chrome")) return "Safari on macOS";
-        return "macOS Device";
-    }
-    if (ua.includes("iPhone") || ua.includes("iPad")) return "iOS Device";
-    if (ua.includes("Android")) return "Android Device";
-    return ua.split(" ")[0] || "Unknown Device";
-  };
-
-  const handleRevokeSession = async (sessionId: string) => {
-    setRevoking(sessionId);
-    try {
-      await revokeSession(sessionId);
-      setSessions(sessions.filter(s => s.id !== sessionId));
-      toast.success("Session revoked successfully");
-      setRevokeOpen(null);
-    } catch (err: any) {
-      toast.error(err.message || "Failed to revoke session");
-    } finally {
-      setRevoking(null);
-    }
-  };
-
-  const handleRevokeAllSessions = async () => {
-    setRevoking("all");
-    try {
-      await revokeAllSessions();
-      setSessions([]);
-      toast.success("All sessions revoked successfully");
-      window.location.reload(); // Since we revoked our own session too
-    } catch (err: any) {
-      toast.error(err.message || "Failed to revoke sessions");
-    } finally {
-      setRevoking(null);
-    }
-  };
-
+  const [twoFactorEnabled, setTwoFactorEnabled] = useState(user?.twoFactorEnabled ?? false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+  const [deleting, setDeleting]     = useState(false);
+
+  useEffect(() => {
+    if (user) setTwoFactorEnabled(user.twoFactorEnabled);
+  }, [user]);
+
+  if (!user) return null;
+
+  const securityChecks = [
+    { label: "Strong password set",       done: !user.googleId,         tip: "Set a password in Change Password below" },
+    { label: "Email verified",             done: user.status === "active", tip: "Verify your email to unlock all features" },
+    { label: "Two-factor authentication", done: twoFactorEnabled,        tip: "Enable 2FA above for +1 security point" },
+    { label: "Google account linked",     done: !!user.googleId,         tip: "Connect Google for faster sign-in" },
+  ];
+  const score = securityChecks.filter((c) => c.done).length;
+  const scoreColor  = score <= 1 ? "bg-red-500" : score === 2 ? "bg-amber-500" : score === 3 ? "bg-blue-500" : "bg-emerald-500";
+  const scoreLabel  = score <= 1 ? "Poor"        : score === 2 ? "Fair"         : score === 3 ? "Good"         : "Excellent";
 
   const handleDeleteAccount = async () => {
     setDeleting(true);
@@ -265,51 +48,41 @@ export default function SecurityPage() {
       await deleteAccount();
       toast.success("Account deletion request submitted for admin approval");
       setDeleteOpen(false);
-      // Optional: Redirect or show a specific state
     } catch (err: any) {
-      toast.error(err.message || "Failed to request account deletion");
+      toast.error(err.message ?? "Failed to request account deletion");
     } finally {
       setDeleting(false);
     }
   };
 
-  if (!user) return null;
-
-  // Security Score
-  const securityChecks = [
-    { label: 'Strong password set', done: !user.googleId, tip: 'Set a password in Change Password below' },
-    { label: 'Email verified', done: user.status === 'active', tip: 'Verify your email to unlock all features' },
-    { label: 'Two-factor authentication', done: twoFactorEnabled, tip: 'Enable 2FA above for +1 security point' },
-    { label: 'Google account linked', done: !!user.googleId, tip: 'Connect Google for faster sign-in' },
-  ];
-  const securityScore = securityChecks.filter(c => c.done).length;
-  const scoreColor = securityScore <= 1 ? 'bg-red-500' : securityScore === 2 ? 'bg-amber-500' : securityScore === 3 ? 'bg-blue-500' : 'bg-emerald-500';
-  const scoreLabel = securityScore <= 1 ? 'Poor' : securityScore === 2 ? 'Fair' : securityScore === 3 ? 'Good' : 'Excellent';
-
   return (
     <div className="space-y-6">
-      {/* Security Score Widget */}
+      {/* ── Security Score ── */}
       <Card className="border-2 border-primary/20 bg-gradient-to-br from-primary/5 to-transparent">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="flex items-center gap-2">
-              <Shield size={18} className="text-primary" />
-              Security Score
+              <Shield size={18} className="text-primary" /> Security Score
             </CardTitle>
             <div className="flex items-center gap-2">
               <span className={`text-xs font-bold px-2.5 py-1 rounded-full text-white ${scoreColor}`}>{scoreLabel}</span>
-              <span className="text-2xl font-bold">{securityScore}<span className="text-muted-foreground text-sm font-normal">/4</span></span>
+              <span className="text-2xl font-bold">{score}<span className="text-muted-foreground text-sm font-normal">/4</span></span>
             </div>
           </div>
           <div className="mt-3 h-2 bg-secondary rounded-full overflow-hidden">
-            <div className={`h-full rounded-full transition-all duration-700 ${scoreColor}`} style={{ width: `${(securityScore / 4) * 100}%` }} />
+            <div className={`h-full rounded-full transition-all duration-700 ${scoreColor}`} style={{ width: `${(score / 4) * 100}%` }} />
           </div>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {securityChecks.map((check) => (
-              <div key={check.label} className={`flex items-center gap-2.5 px-3 py-2 rounded-xl border text-sm ${check.done ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-secondary border-border text-muted-foreground'}`}>
-                {check.done ? <CheckCircle size={14} className="text-emerald-600 shrink-0" /> : <AlertCircle size={14} className="text-amber-500 shrink-0" />}
+              <div
+                key={check.label}
+                className={`flex items-center gap-2.5 px-3 py-2 rounded-xl border text-sm ${check.done ? "bg-emerald-50 border-emerald-200 text-emerald-800" : "bg-secondary border-border text-muted-foreground"}`}
+              >
+                {check.done
+                  ? <CheckCircle size={14} className="text-emerald-600 shrink-0" />
+                  : <AlertCircle size={14} className="text-amber-500 shrink-0" />}
                 <span className="font-medium flex-1">{check.label}</span>
                 {!check.done && <span className="text-[10px] opacity-60 hidden sm:block">{check.tip}</span>}
               </div>
@@ -318,246 +91,17 @@ export default function SecurityPage() {
         </CardContent>
       </Card>
 
-      {/* Password Management - Hidden for Google Auth users */}
+      <PasswordSection isGoogleUser={!!user.googleId} />
+      <TwoFactorSection enabled={twoFactorEnabled} onStatusChange={setTwoFactorEnabled} />
+      <SessionsSection />
+
+      {/* ── Connected Accounts ── */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Lock size={18} className="text-primary" />
-            Change Password
-          </CardTitle>
-          <CardDescription>
-            {user.googleId 
-              ? "Your security is managed by Google" 
-              : "Update your password to secure your account"}
-          </CardDescription>
+          <CardTitle className="flex items-center gap-2"><Shield size={18} className="text-primary" /> Connected Accounts</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-3">
           {user.googleId ? (
-            <div className="flex flex-col items-center justify-center py-6 text-center space-y-4">
-              <div className="p-3 bg-blue-50 rounded-full">
-                <Shield size={32} className="text-blue-600" />
-              </div>
-              <div className="max-w-sm space-y-2">
-                <p className="text-sm font-medium">You are signed in with Google</p>
-                <p className="text-xs text-muted-foreground">
-                  Since you use Google to sign in, you don't have a separate password for CodeSwayam. 
-                  To manage your account security, please visit your Google Account settings.
-                </p>
-              </div>
-              <Button variant="outline" asChild>
-                <a href="https://myaccount.google.com/security" target="_blank" rel="noreferrer">
-                  Manage Google Security
-                </a>
-              </Button>
-            </div>
-          ) : (
-            <form onSubmit={handleChangePassword} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="current-password">Current Password</Label>
-                <div className="relative">
-                  <Input
-                    id="current-password"
-                    type={showCurrentPassword ? "text" : "password"}
-                    value={currentPassword}
-                    onChange={(e) => setCurrentPassword(e.target.value)}
-                    placeholder="Enter current password"
-                    required
-                  />
-                  <button
-                    type="button"
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                    onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-                  >
-                    {showCurrentPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                  </button>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="new-password">New Password</Label>
-                <div className="relative">
-                  <Input
-                    id="new-password"
-                    type={showNewPassword ? "text" : "password"}
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="Enter new password (min 8 characters)"
-                    required
-                  />
-                  <button
-                    type="button"
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                    onClick={() => setShowNewPassword(!showNewPassword)}
-                  >
-                    {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                  </button>
-                </div>
-                {/* Real-time strength meter */}
-                <PasswordStrengthMeter password={newPassword} />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="confirm-password">Confirm Password</Label>
-                <div className="relative">
-                  <Input
-                    id="confirm-password"
-                    type={showConfirmPassword ? "text" : "password"}
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="Confirm new password"
-                    required
-                  />
-                  <button
-                    type="button"
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  >
-                    {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                  </button>
-                </div>
-              </div>
-
-              <Button type="submit" disabled={changingPassword}>
-                {changingPassword && <Loader2 size={14} className="animate-spin mr-2" />}
-                Update Password
-              </Button>
-            </form>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Two-Factor Authentication */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Smartphone size={18} className="text-primary" />
-            Two-Factor Authentication
-          </CardTitle>
-          <CardDescription>Add an extra layer of security to your account</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg border">
-              <div className="flex items-center gap-3">
-                {twoFactorEnabled ? (
-                  <CheckCircle size={20} className="text-green-600" />
-                ) : (
-                  <AlertCircle size={20} className="text-amber-600" />
-                )}
-                <div>
-                  <p className="font-medium">
-                    {twoFactorEnabled ? "Enabled" : "Disabled"}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {twoFactorEnabled
-                      ? "Your account is protected with 2FA"
-                      : "Secure your account with 2FA"}
-                  </p>
-                </div>
-              </div>
-              <Button
-                variant={twoFactorEnabled ? "outline" : "default"}
-                onClick={twoFactorEnabled ? handleDisable2FA : start2FASetup}
-                disabled={setupLoading}
-              >
-                {setupLoading && <Loader2 size={14} className="animate-spin mr-2" />}
-                {twoFactorEnabled ? "Disable" : "Enable"}
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Active Sessions */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-start justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <Key size={18} className="text-primary" />
-                Active Sessions
-              </CardTitle>
-              <CardDescription>Manage your active sessions and devices</CardDescription>
-            </div>
-            {sessions.length > 1 && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleRevokeAllSessions}
-                disabled={revoking === "all"}
-              >
-                {revoking === "all" && <Loader2 size={14} className="animate-spin mr-1" />}
-                Revoke All
-              </Button>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {loadingSessions ? (
-            <div className="flex flex-col items-center justify-center py-8 space-y-3">
-              <Loader2 className="animate-spin text-primary" size={24} />
-              <p className="text-sm text-muted-foreground">Loading active sessions...</p>
-            </div>
-          ) : sessions.length > 0 ? (
-            <>
-              {paginatedSessions.map((session, idx) => {
-                const globalIdx = (sessionsPage - 1) * SESSIONS_PER_PAGE + idx;
-                const isCurrent = globalIdx === sessions.length - 1;
-                return (
-                  <div
-                    key={session.id}
-                    className="flex items-start justify-between p-4 border rounded-lg hover:bg-muted/30 transition-colors"
-                  >
-                    <div className="space-y-1">
-                      <p className="font-medium">{parseUserAgent(session?.userAgent)}</p>
-                      <p className="text-xs text-muted-foreground">IP: {session.ipAddress || "Unknown"}</p>
-                      <p className="text-xs text-muted-foreground">
-                        Started: {new Date(session.createdAt).toLocaleString()}
-                      </p>
-                      {isCurrent && <Badge className="mt-2">Current</Badge>}
-                    </div>
-                    {!isCurrent && (
-                      <Button variant="outline" size="sm" onClick={() => setRevokeOpen(session.id)}>
-                        <LogOut size={14} />
-                      </Button>
-                    )}
-                  </div>
-                );
-              })}
-              {sessionsTotalPages > 1 && (
-                <div className="flex items-center justify-between pt-2 border-t">
-                  <p className="text-xs text-muted-foreground">
-                    {(sessionsPage - 1) * SESSIONS_PER_PAGE + 1}–{Math.min(sessionsPage * SESSIONS_PER_PAGE, sessions.length)} of {sessions.length} sessions
-                  </p>
-                  <div className="flex items-center gap-1">
-                    <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setSessionsPage(p => Math.max(1, p - 1))} disabled={sessionsPage === 1}>
-                      <ChevronLeft size={14} />
-                    </Button>
-                    <span className="text-xs text-muted-foreground px-2">{sessionsPage} / {sessionsTotalPages}</span>
-                    <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => setSessionsPage(p => Math.min(sessionsTotalPages, p + 1))} disabled={sessionsPage === sessionsTotalPages}>
-                      <ChevronRight size={14} />
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </>
-          ) : (
-            <p className="text-sm text-muted-foreground text-center py-4">No active sessions</p>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Connected Accounts */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Shield size={18} className="text-primary" />
-            Connected Accounts
-          </CardTitle>
-          <CardDescription>Manage your connected authentication methods</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {user.googleId && (
             <div className="flex items-center justify-between p-4 border rounded-lg">
               <div>
                 <p className="font-medium">Google Account</p>
@@ -565,25 +109,16 @@ export default function SecurityPage() {
               </div>
               <Badge className="bg-green-100 text-green-800">Connected</Badge>
             </div>
-          )}
-          {!user.googleId && (
-            <p className="text-sm text-muted-foreground text-center py-4">
-              No additional accounts connected
-            </p>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-4">No additional accounts connected</p>
           )}
         </CardContent>
       </Card>
 
-      {/* Danger Zone */}
+      {/* ── Danger Zone ── */}
       <Card className="border-red-200 bg-red-50/30">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-red-600">
-            <AlertCircle size={18} />
-            Danger Zone
-          </CardTitle>
-          <CardDescription>
-            Irreversible actions for your account
-          </CardDescription>
+          <CardTitle className="flex items-center gap-2 text-red-600"><AlertCircle size={18} /> Danger Zone</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex items-center justify-between p-4 border border-red-100 rounded-lg bg-white">
@@ -593,110 +128,27 @@ export default function SecurityPage() {
                 Permanently remove your account and all associated data. This requires admin approval.
               </p>
             </div>
-            <Button 
-              variant="destructive" 
-              size="sm"
-              onClick={() => setDeleteOpen(true)}
-              disabled={user.status === 'pending_deletion'}
-            >
-              {user.status === 'pending_deletion' ? "Deletion Pending" : "Delete Account"}
+            <Button variant="destructive" size="sm" onClick={() => setDeleteOpen(true)} disabled={user.status === "pending_deletion"}>
+              {user.status === "pending_deletion" ? "Deletion Pending" : "Delete Account"}
             </Button>
           </div>
         </CardContent>
       </Card>
 
-      {/* Account Deletion Dialog */}
+      {/* Delete Dialog */}
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Are you absolutely sure?</DialogTitle>
             <DialogDescription>
-              This action will submit a request to delete your account. Once an administrator approves it, all your data will be permanently removed. This cannot be undone.
+              This action will submit a request to delete your account. Once an administrator approves it, all your data will be permanently removed.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleDeleteAccount}
-              disabled={deleting}
-            >
+            <Button variant="outline" onClick={() => setDeleteOpen(false)}>Cancel</Button>
+            <Button variant="destructive" onClick={handleDeleteAccount} disabled={deleting}>
               {deleting && <Loader2 size={14} className="animate-spin mr-1" />}
               Request Account Deletion
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Revoke Session Dialog */}
-      <Dialog open={!!revokeOpen} onOpenChange={() => setRevokeOpen(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Revoke Session</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to revoke this session? You&apos;ll need to sign in again on that device.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setRevokeOpen(null)}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={() => revokeOpen && handleRevokeSession(revokeOpen)}
-              disabled={revoking === revokeOpen}
-            >
-              {revoking === revokeOpen && <Loader2 size={14} className="animate-spin mr-1" />}
-              Revoke Session
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* 2FA Setup Dialog */}
-      <Dialog open={showingTwoFactorSetup} onOpenChange={setShowingTwoFactorSetup}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Set Up Two-Factor Authentication</DialogTitle>
-            <DialogDescription>
-              Enhance your account security by requiring a verification code on sign-in.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="bg-muted/50 p-4 rounded-lg text-center">
-              <p className="text-sm text-muted-foreground mb-3">
-                Scan this QR code with an authenticator app (Google Authenticator, Authy, Microsoft Authenticator, etc.)
-              </p>
-              <div className="bg-white p-4 rounded inline-block">
-                {qrCode ? (
-                  <img src={qrCode} alt="2FA QR Code" className="w-40 h-40" />
-                ) : (
-                  <div className="w-40 h-40 bg-muted flex items-center justify-center rounded">
-                    <Loader2 size={24} className="animate-spin text-muted-foreground" />
-                  </div>
-                )}
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="verification-code">Enter verification code</Label>
-              <Input
-                id="verification-code"
-                placeholder="000000"
-                maxLength={6}
-                value={setupToken}
-                onChange={(e) => setSetupToken(e.target.value)}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowingTwoFactorSetup(false)}>
-              Cancel
-            </Button>
-            <Button onClick={verifyAndEnable2FA} disabled={setupLoading || setupToken.length !== 6}>
-              {setupLoading && <Loader2 size={14} className="animate-spin mr-2" />}
-              Verify & Enable
             </Button>
           </DialogFooter>
         </DialogContent>

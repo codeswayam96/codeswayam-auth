@@ -1,487 +1,391 @@
-# CodeSwayam Auth - Authentication Service
+# CodeSwayam Auth (`codeswayam-auth`)
 
-## Overview
+![Next.js](https://img.shields.io/badge/Next.js-14_App_Router-black?style=flat-square&logo=next.js)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue?style=flat-square&logo=typescript)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.x-38BDF8?style=flat-square&logo=tailwindcss)
+![Security](https://img.shields.io/badge/Auth-JWT_%26_2FA_%26_OAuth-green?style=flat-square)
+![Architecture](https://img.shields.io/badge/Architecture-SOLID_%26_Modular-purple?style=flat-square)
 
-**CodeSwayam Auth** is a dedicated authentication and account management service. It handles user registration, login, password reset, account settings, and integrates with **Clerk** for enterprise-grade authentication. This service provides a seamless authentication experience across the CodeSwayam platform with features like OAuth, multi-factor authentication, and session management.
-
----
-
-## 🎯 Key Features
-
-- **User Authentication**: Register, login, logout with Clerk integration
-- **Account Management**: Profile management, account settings
-- **Password Management**: Reset password, change password flows
-- **OAuth Integration**: Social login (Google, GitHub, etc.)
-- **Session Management**: Secure session handling
-- **Multi-Factor Authentication**: Additional security layer
-- **Invoice Management**: View and download invoices
-- **Dashboard**: Personalized user dashboard
-- **Responsive Design**: Mobile-optimized interface
-- **Razorpay Integration**: Payment processing for credits/subscriptions
+> **Centralized Authentication Hub, SSO Gateway, and Account Portal for the entire CodeSwayam platform.**
 
 ---
 
-## 🛠️ Tech Stack
+## Table of Contents
 
-### Frontend Framework
-- **Framework**: Next.js 16.x (React 19.x)
-- **Language**: TypeScript
-- **Styling**: Tailwind CSS v4 with PostCSS
-- **UI Components**: Radix UI, @codeswayam/ui
-
-### Authentication
-- **Auth Provider**: Clerk (enterprise authentication)
-- **Google OAuth**: @react-oauth/google
-
-### Key Libraries
-- **Forms**: React Hook Form, Zod
-- **HTTP Client**: Axios
-- **PDF Export**: html2pdf.js
-- **Toast Notifications**: Sonner
-- **Icons**: Lucide React
-- **Shared Packages**: @codeswayam/ui, @codeswayam/api-client
+- [1. Architectural Overview](#1-architectural-overview)
+- [2. System Architecture & SSO Flow](#2-system-architecture--sso-flow)
+- [3. Codebase Organization & Folder Structure](#3-codebase-organization--folder-structure)
+- [4. Design Patterns & SOLID Engineering](#4-design-patterns--solid-engineering)
+- [5. Route & Component Inventory](#5-route--component-inventory)
+- [6. Edge Middleware & Security Guards](#6-edge-middleware--security-guards)
+- [7. Developer Guide: Adding New Pages & Features](#7-developer-guide-adding-new-pages--features)
+- [8. Development & Verification](#8-development--verification)
 
 ---
 
-## 📋 Prerequisites
+## 1. Architectural Overview
 
-- **Node.js**: v18 or higher
-- **npm**: v11.6.2+
-- **Clerk Account**: For authentication setup
+`codeswayam-auth` is the mission-critical entry point for identity, authorization, billing, and subscription management across all CodeSwayam services (Web portal, IDE, Neural Web, Admin, and external client apps).
+
+### Core Responsibilities
+
+1. **Unified Identity & Access Management (IAM)**:
+   - Multi-factor authentication (TOTP 2FA).
+   - Email verification with automated 6-digit OTP issuance and verification.
+   - Google OAuth integration with state and redirect integrity.
+   - Session lifecycle management (active sessions list, device inspection, remote revocation).
+
+2. **Cross-Domain SSO Gateway (`/sso`)**:
+   - Short-lived ticket issuance and exchange.
+   - Anti-phishing redirect validation against a dynamic trusted domain allowlist.
+   - Automatic redirect loop guards to eliminate ping-pong authentication cycles.
+
+3. **Customer Account Portal (`/account`)**:
+   - Centralized account overview and real-time subscription status.
+   - Plan lifecycle controls (upgrades, downgrades, cancellations, grace period renewals).
+   - Visual expiration alerts with specialized indicators across all subscription views.
+   - Wallet credits, transaction audit trail, and Razorpay pack checkout.
+   - Invoicing, receipts, downloadable PDFs, and localized tax handling.
+   - Push notifications (Web Push / VAPID) and user preference configuration.
 
 ---
 
-## 🔧 Installation & Setup
+## 2. System Architecture & SSO Flow
 
-### 1. Install Dependencies
-
-```bash
-# From root directory
-npm install
-
-# Or from codeswayam-auth directory
-cd codeswayam-auth
-npm install
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                          CodeSwayam Ecosystem                           │
+│                                                                         │
+│   ┌──────────────┐       ┌──────────────┐       ┌──────────────────┐    │
+│   │ codeswayam-  │       │ codeswayam-  │       │   neural-web /   │    │
+│   │    web       │       │    admin     │       │   external apps  │    │
+│   └──────┬───────┘       └──────┬───────┘       └─────────┬────────┘    │
+│          │                      │                         │             │
+│          └──────────────────────┼─────────────────────────┘             │
+│                                 ▼                                       │
+│                Unauthenticated Redirect to /sso                         │
+│                                 │                                       │
+│                                 ▼                                       │
+│               ┌───────────────────────────────────┐                     │
+│               │       codeswayam-auth (:3003)      │                     │
+│               │                                   │                     │
+│               │   ┌───────────────┐ ┌─────────┐   │                     │
+│               │   │ /login        │ │ /sso    │   │                     │
+│               │   │ /signup       │ │ (Ticket │   │                     │
+│               │   │ /2fa          │ │  Issuer)│   │                     │
+│               │   └───────┬───────┘ └────┬────┘   │                     │
+│               │           │              │        │                     │
+│               │           ▼              ▼        │                     │
+│               │   ┌───────────────────────────┐   │                     │
+│               │   │ /account & /dashboard     │   │                     │
+│               │   │ Subscriptions · Credits   │   │                     │
+│               │   │ Invoices · Security       │   │                     │
+│               │   └───────────────────────────┘   │                     │
+│               └─────────────────┬─────────────────┘                     │
+│                                 │                                       │
+│                SSO Ticket Issued (30s TTL)                              │
+│                                 ▼                                       │
+│               ┌───────────────────────────────────┐                     │
+│               │             core-api              │                     │
+│               │ Ticket verification & session mint│                     │
+│               └───────────────────────────────────┘                     │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 2. Environment Variables
+### SSO Ticket Lifecycle
 
-Create `.env.local` file in the `codeswayam-auth` directory:
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Client as Client Application
+    participant Auth as codeswayam-auth (:3003)
+    participant API as core-api (:3000)
 
-```env
-# Clerk Configuration (Required)
-NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=your_clerk_publishable_key
-CLERK_SECRET_KEY=your_clerk_secret_key
-
-# API Configuration
-NEXT_PUBLIC_API_BASE_URL=http://localhost:3000
-NEXT_PUBLIC_API_TIMEOUT=10000
-
-# Redirect URLs
-NEXT_PUBLIC_CLERK_SIGN_IN_URL=/login
-NEXT_PUBLIC_CLERK_SIGN_UP_URL=/signup
-NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL=/dashboard
-NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL=/dashboard
-
-# Google OAuth (Optional)
-NEXT_PUBLIC_GOOGLE_CLIENT_ID=your_google_client_id.apps.googleusercontent.com
-
-# Razorpay Configuration (Optional - for payments)
-NEXT_PUBLIC_RAZORPAY_KEY_ID=your_razorpay_key_id
-
-# Feature Flags
-NEXT_PUBLIC_ENABLE_SOCIAL_LOGIN=true
-NEXT_PUBLIC_ENABLE_2FA=true
-```
-
-### 3. Clerk Setup
-
-1. Go to [Clerk Dashboard](https://dashboard.clerk.com)
-2. Create a new application
-3. Set sign-in/sign-up URLs
-4. Configure OAuth providers
-5. Copy keys to `.env.local`
-
----
-
-## 🚀 Running the Application
-
-### Development Mode
-
-```bash
-# Start development server
-npm run dev
-
-# Access at http://localhost:3003
-```
-
-### Build for Production
-
-```bash
-# Create optimized build
-npm run build
-
-# Test production build locally
-npm run start
-
-# Access at http://localhost:3003
+    Client->>Auth: Redirect to /sso?redirect_url=https://app.codeswayam.com/callback
+    Note over Auth: Verify HttpOnly Session Cookie
+    alt Not Authenticated
+        Auth->>Auth: Redirect to /login?redirect=/sso?redirect_url=...
+        Note over Auth: User logs in (Email/Pass + 2FA / Google)
+    end
+    Auth->>API: POST /auth/sso/issue-ticket
+    API-->>Auth: Return short-lived ticket (single-use, 30s expiry)
+    Auth->>Client: 302 Redirect to redirect_url?ticket={TICKET}
+    Client->>API: POST /auth/sso/exchange-ticket { ticket }
+    API-->>Client: Return JWT session cookie / token
 ```
 
 ---
 
-## 📁 Project Structure
+## 3. Codebase Organization & Folder Structure
+
+The codebase strictly adheres to the **Thin Orchestrator & Feature Co-location** standard. Route handlers (`page.tsx`) do not contain massive inline UI blocks; instead, each page delegates to focused sub-components co-located in `_components/`.
 
 ```
 codeswayam-auth/
 ├── app/
-│   ├── layout.tsx              # Root layout with Clerk provider
-│   ├── page.tsx                # Home/redirect page
-│   ├── globals.css             # Global styles
-│   ├── account/
-│   │   ├── layout.tsx
-│   │   ├── page.tsx            # Account overview
-│   │   └── settings.tsx        # Account settings
+│   ├── (auth)/                          # Unauthenticated authentication routes
+│   │   ├── login/
+│   │   │   ├── page.tsx                 # Thin orchestrator (auth checks, routing)
+│   │   │   └── _components/
+│   │   │       ├── LoginForm.tsx        # Email/password + Google auth form
+│   │   │       ├── VerificationNeededBanner.tsx  # Fresh OTP input & resend
+│   │   │       ├── TwoFactorChallenge.tsx        # TOTP authenticator code challenge
+│   │   │       ├── ErrorAlert.tsx       # Standardized form error alert
+│   │   │       └── index.ts             # Clean public barrel export
+│   │   └── signup/
+│   │       ├── page.tsx                 # Thin orchestrator (redirects, source tagging)
+│   │       └── _components/
+│   │           ├── SignupForm.tsx       # Registration form with referral codes
+│   │           ├── EmailVerificationPending.tsx  # Post-signup OTP verification
+│   │           └── index.ts
+│   │
+│   ├── account/                         # Authenticated Customer Portal
+│   │   ├── layout.tsx                   # Thin Layout Orchestrator & Context Provider
+│   │   ├── page.tsx                     # Thin Overview Orchestrator
+│   │   ├── _components/                 # Shared Account Layout & Overview Components
+│   │   │   ├── AccountHeader.tsx        # Sticky top navigation with user menu
+│   │   │   ├── AccountSidebar.tsx       # Desktop vertical sidebar with admin links
+│   │   │   ├── MobileNav.tsx            # Sticky horizontal mobile navigation
+│   │   │   ├── AccountStatusBanner.tsx  # Suspension/rejection alert banners
+│   │   │   ├── nav-items.ts             # Navigation schema & role permissions
+│   │   │   ├── OverviewHero.tsx         # Welcome hero banner
+│   │   │   ├── OverviewStats.tsx        # Stat cards (active apps, monthly spend, credits)
+│   │   │   ├── OverviewActiveSubscriptions.tsx # Expired-aware grouped subscription list
+│   │   │   ├── GettingStartedCard.tsx   # Quick start guide
+│   │   │   └── index.ts
+│   │   │
+│   │   ├── activity/
+│   │   │   ├── page.tsx                 # Activity Log Orchestrator
+│   │   │   └── _components/             # ActivityRow, ActivityStats, ActivityHeader, Pagination
+│   │   ├── apps/
+│   │   │   ├── page.tsx                 # Subscribed Apps Orchestrator
+│   │   │   └── _components/             # AppCard, AppUsageMeters, AppsStats, AppsHeader
+│   │   ├── billing/
+│   │   │   ├── page.tsx                 # Billing & Payment Orchestrator
+│   │   │   └── _components/             # StatCard, StatusBadge, InvoiceRow, BillingFaqCard
+│   │   ├── credits/
+│   │   │   ├── page.tsx                 # Credits & Wallet Orchestrator
+│   │   │   └── _components/             # PackCard, TxRow, CreditsTrustNote
+│   │   ├── notifications/
+│   │   │   ├── page.tsx                 # Notifications Orchestrator
+│   │   │   └── _components/             # NotifRow, NotifHeader, NotifFilterTabs
+│   │   ├── preferences/
+│   │   │   ├── page.tsx                 # User Preferences Orchestrator
+│   │   │   └── _components/             # NotificationPreferences, Localization, Theme, DangerZone
+│   │   ├── profile/
+│   │   │   ├── page.tsx                 # User Profile Orchestrator
+│   │   │   └── _components/             # ProfileInfoCard, AvatarUpload, SubscriptionSummary
+│   │   ├── referrals/
+│   │   │   ├── page.tsx                 # Referral System Orchestrator
+│   │   │   └── _components/             # ReferralCodeBox, RedeemCodeForm, Stats, HistoryTable
+│   │   ├── security/
+│   │   │   ├── page.tsx                 # Security Orchestrator
+│   │   │   └── _components/             # PasswordSection, TwoFactorSection, SessionsSection
+│   │   └── subscriptions/
+│   │       ├── page.tsx                 # Subscriptions Orchestrator
+│   │       └── _components/             # SubscriptionCard, UpgradeModal, CancelDialog, StatusPill
+│   │
 │   ├── dashboard/
-│   │   ├── layout.tsx
-│   │   └── page.tsx            # User dashboard
-│   ├── login/
-│   │   ├── layout.tsx
-│   │   └── page.tsx            # Login page
-│   ├── signup/
-│   │   ├── layout.tsx
-│   │   └── page.tsx            # Sign up page
-│   ├── forgot-password/
-│   │   └── page.tsx            # Password reset request
-│   ├── reset-password/
-│   │   └── page.tsx            # Password reset form
+│   │   ├── page.tsx                     # Catalog & Product Hub Orchestrator
+│   │   └── _components/                 # ProductCard, BundleCard, FilterBar
+│   │
 │   ├── invoices/
-│   │   ├── layout.tsx
-│   │   ├── page.tsx            # Invoices list
-│   │   └── [id]/               # Invoice detail
-│   ├── profile/
-│   │   ├── layout.tsx
-│   │   └── page.tsx            # User profile
-│   └── api/                    # API routes
-│       ├── auth/
-│       ├── user/
-│       └── invoices/
-├── components/
-│   ├── navbar.tsx              # Navigation bar
-│   ├── footer.tsx              # Footer
-│   ├── providers.tsx           # Auth providers setup
-│   ├── razorpay-checkout.tsx   # Payment component
-│   ├── ui/                     # Reusable UI components
-│   └── forms/                  # Form components
-├── lib/
-│   ├── api.ts                  # API client
-│   ├── auth-mode.tsx           # Auth mode utilities
-│   ├── auth-redirect.ts        # Auth redirection logic
-│   ├── use-clerk-exchange.ts   # Clerk token exchange hook
-│   └── utils.ts                # Utility functions
-├── public/
-│   └── images/
-├── tailwind.config.ts
-├── tsconfig.json
-└── next.config.ts
+│   │   ├── page.tsx                     # Invoices List Orchestrator
+│   │   └── _components/                 # InvoiceItemRow, InvoicesStats, InvoicesHeader, FilterTabs
+│   │
+│   └── sso/
+│       └── page.tsx                     # SSO Ticket issuance handler
+│
+├── components/                          # Cross-route global components
+│   ├── ui/                              # Shadcn UI primitives (Button, Card, Input, etc.)
+│   ├── brand-loader.tsx                 # Branded animated loader
+│   ├── navbar.tsx                       # Public header
+│   └── providers.tsx                    # Theme and OAuth context wrappers
+│
+├── lib/                                 # Platform utilities & API client
+│   ├── api.ts                           # Typed API client functions
+│   ├── auth-redirect.ts                 # Safe redirection and auth token verification
+│   ├── domains.ts                       # Dynamic trusted domain allowlist resolution
+│   └── signup-source.ts                 # Attribution query parameter parsing
+│
+├── types/                               # Centralized TypeScript Contracts
+│   ├── subscription.ts                  # BillingCycle, PlanTier, PublicProduct, PublicBundle
+│   └── index.ts
+│
+└── middleware.ts                        # Edge route guarding, loop-protection, and token checking
 ```
 
 ---
 
-## 📝 Available Scripts
+## 4. Design Patterns & SOLID Engineering
 
-```bash
-# Development
-npm run dev              # Start dev server at port 3003
-npm run build            # Build for production
-npm run start            # Start production server
-npm run lint             # Run ESLint
+Every file and component in `codeswayam-auth` is built around industry-standard software engineering principles:
+
+### 1. Single Responsibility Principle (SRP)
+- **Thin Orchestrators (`page.tsx`)**: Responsible **only** for data retrieval, top-level hook orchestration, error handling, and component assembly.
+- **Dedicated Components (`_components/*.tsx`)**: Responsible **only** for rendering their specific domain slice (e.g., `PasswordSection` manages only password changing; `AppUsageMeters` handles only meter visual state).
+
+### 2. Open / Closed Principle (OCP)
+- Adding new tabs, settings categories, or stat metrics is achieved by authoring new modular files under `_components/` without modifying or endangering existing components.
+- Metadata maps (e.g. `NOTIF_META`, `STATUS_STYLES`, `TIER_COLORS`) drive icon and color formatting declaratively rather than using sprawling inline conditional checks.
+
+### 3. Dependency Inversion Principle (DIP)
+- Pure UI components depend upon typed interfaces (`types/`) rather than ad-hoc page-level types.
+- Remote operations are routed through centralized API abstractions (`@/lib/api`) rather than raw inline `fetch` calls.
+
+### 4. Visual Expiration Highlighting Pattern (Expired Status)
+Subscription items across `subscriptions/`, `profile/`, `apps/`, and `account/page.tsx` utilize centralized expiration detection:
+- Subscriptions whose `expiresAt` is in the past are highlighted with red-tinted backgrounds (`#fff5f5`), border accents (`#fca5a5`), line-through on plan names, and direct "Renew" call-to-action buttons.
+
+---
+
+## 5. Route & Component Inventory
+
+| Route | Protection | Orchestrator | Primary Sub-Components (`_components/`) |
+|---|---|---|---|
+| `/login` | Public (Bounces if authed) | `app/login/page.tsx` | `LoginForm`, `VerificationNeededBanner`, `TwoFactorChallenge`, `ErrorAlert` |
+| `/signup` | Public (Bounces if authed) | `app/signup/page.tsx` | `SignupForm`, `EmailVerificationPending` |
+| `/account` | 🔒 Protected | `app/account/page.tsx` | `OverviewHero`, `OverviewStats`, `OverviewActiveSubscriptions`, `GettingStartedCard` |
+| `/account/subscriptions` | 🔒 Protected | `app/account/subscriptions/page.tsx` | `SubscriptionCard`, `SubscriptionGroup`, `PastSubscriptionRow`, `UpgradeModal`, `CancelDialog` |
+| `/account/profile` | 🔒 Protected | `app/account/profile/page.tsx` | `ProfileInfoCard`, `AvatarUpload`, `SubscriptionSummary`, `AccountStatusCard`, `DangerZone` |
+| `/account/security` | 🔒 Protected | `app/account/security/page.tsx` | `PasswordSection`, `TwoFactorSection`, `SessionsSection` |
+| `/account/billing` | 🔒 Protected | `app/account/billing/page.tsx` | `StatCard`, `StatusBadge`, `InvoiceRow`, `BillingFaqCard`, `RazorpayNoteCard` |
+| `/account/credits` | 🔒 Protected | `app/account/credits/page.tsx` | `PackCard`, `TxRow`, `CreditsTrustNote` |
+| `/account/apps` | 🔒 Protected | `app/account/apps/page.tsx` | `AppCard`, `AppUsageMeters`, `AppsHeader`, `AppsStats` |
+| `/account/activity` | 🔒 Protected | `app/account/activity/page.tsx` | `ActivityRow`, `ActivityStats`, `ActivityHeader`, `ActivityPagination` |
+| `/account/referrals` | 🔒 Protected | `app/account/referrals/page.tsx` | `ReferralHeader`, `ReferralCodeBox`, `RedeemCodeForm`, `ReferralStatsCards`, `RedemptionHistoryTable` |
+| `/account/preferences` | 🔒 Protected | `app/account/preferences/page.tsx` | `NotificationPreferencesCard`, `LocalizationCard`, `ThemeCard`, `DataManagementCard`, `DangerZoneCard` |
+| `/dashboard` | 🔒 Protected | `app/dashboard/page.tsx` | `ProductCard`, `BundleCard`, `FilterBar` |
+| `/invoices` | 🔒 Protected | `app/invoices/page.tsx` | `InvoiceItemRow`, `InvoicesStats`, `InvoicesHeader`, `InvoicesFilterTabs` |
+
+---
+
+## 6. Edge Middleware & Security Guards
+
+The Edge Middleware (`middleware.ts`) protects all routes before requests enter the Next.js React render tree:
+
+```
+Incoming Request
+       │
+       ▼
+Is path /sso? ────────────► YES ──► Allow through (Always open for ticket issuance)
+       │
+       NO
+       ▼
+Is path protected?
+(/account, /dashboard, /invoices, /profile)
+       │
+      YES ──► Has valid session cookie?
+                   │
+                   NO  ──► Redirect to /login?redirect=<safe_current_url>
+                   YES ──► Allow through
+       │
+       NO
+       ▼
+Is path an auth route? (/login, /signup)
+       │
+      YES ──► Has valid session cookie?
+                   │
+                   YES ──► Check loop guard & redirect to target app or /dashboard
+                   NO  ──► Allow through
+       │
+       NO
+       ▼
+Allow through (Public landing & marketing pages)
 ```
 
----
-
-## 🔐 Authentication Flow
-
-### Sign Up Flow
-1. User navigates to `/signup`
-2. Enters email and password
-3. Clerk creates account
-4. User redirected to dashboard
-5. Account is created in backend
-
-### Login Flow
-1. User navigates to `/login`
-2. Enters email and password
-3. Clerk authenticates
-4. JWT token issued
-5. User redirected to dashboard
-
-### Password Reset
-1. User clicks "Forgot Password" on login
-2. Enters email address
-3. Receives reset email from Clerk
-4. Clicks link in email
-5. Sets new password
-6. Can log in with new password
-
-### OAuth/Social Login
-1. User clicks "Sign in with Google"
-2. Redirected to Google OAuth
-3. User authorizes CodeSwayam
-4. Returned to app with OAuth token
-5. Account created or linked
+### Loop Guard
+Before issuing any 302 redirect back to the originating client app, the redirect target URL is validated:
+1. Target hostname cannot match `auth.codeswayam.com` or create an infinite loop.
+2. Target hostname must be in the trusted domain allowlist (`localhost`, `*.codeswayam.com`, or database-registered enterprise SSO domains).
 
 ---
 
-## 📋 Pages & Features
+## 7. Developer Guide: Adding New Pages & Features
 
-### Login (`/login`)
-- Email/password login
-- Social login buttons
-- Remember me option
-- "Forgot password" link
-- Sign up redirect
+When adding a new page or extending existing functionality, follow this standard pattern:
 
-### Sign Up (`/signup`)
-- Email/password registration
-- Social sign up
-- Terms & conditions
-- Email verification
-- Login redirect
-
-### Dashboard (`/dashboard`)
-- Welcome message
-- Quick stats
-- Recent activity
-- Quick action buttons
-- Subscription status
-
-### Account (`/account`)
-- Account overview
-- Basic information
-- Account status
-- Subscription details
-- Action buttons
-
-### Account Settings (`/account/settings`)
-- Profile information
-- Email preferences
-- Privacy settings
-- Security options
-- Connected accounts
-
-### Profile (`/profile`)
-- User information
-- Avatar/photo
-- Bio/description
-- Social links
-- Edit profile form
-
-### Invoices (`/invoices`)
-- List of invoices
-- Invoice details
-- Download invoice (PDF)
-- Invoice search/filter
-- Date range filtering
-
-### Forgot Password (`/forgot-password`)
-- Email input
-- Verification message
-- Resend link option
-
-### Reset Password (`/reset-password`)
-- Password confirmation
-- New password input
-- Password strength indicator
-- Success message
-
----
-
-## 🔌 API Integration
-
-### User Endpoints
-- `GET /api/user` - Get current user
-- `PATCH /api/user` - Update user profile
-- `POST /api/user/avatar` - Upload avatar
-- `DELETE /api/user` - Delete account
-
-### Invoices Endpoints
-- `GET /api/invoices` - List invoices
-- `GET /api/invoices/:id` - Get invoice details
-- `GET /api/invoices/:id/download` - Download PDF
-
-### Auth Endpoints
-- `POST /api/auth/exchange` - Exchange Clerk token for backend JWT
-- `POST /api/auth/refresh` - Refresh token
-- `POST /api/auth/logout` - Logout
-
----
-
-## 💳 Razorpay Integration & Billing UI
-
-### Payment Processing
-
-The auth service implements the `<RazorpayButton>` component to initiate checkout flows for credit packs or SaaS subscription plans (including upgrades):
-
+### Step 1: Establish Types
+Place all domain-specific data models in `types/` or a local `_components/types.ts` file:
 ```typescript
-import { RazorpayButton } from "@/components/razorpay-checkout";
-
-// Simple subscription purchase
-<RazorpayButton
-  saasProductId={plan.id}
-  billingCycle="monthly"
-  currency="INR"
-  planName={plan.name}
-/>
-
-// Upgrade subscription (supports proration calculations)
-<RazorpayButton
-  saasProductId={plan.id}
-  billingCycle="monthly"
-  currency="INR"
-  planName={plan.name}
-  upgradeFromSubscriptionId={currentActiveSub.id}
-/>
+// types/my-feature.ts
+export interface FeatureItem {
+  id: string;
+  name: string;
+  enabled: boolean;
+}
 ```
 
-### Upgrade & Cancellation Workflows
-- **Proration Price Breakdown**: When upgrading a plan inside the `UpgradeModal`, the interface estimates the unused subscription time credit and displays a breakdown of the new plan price, unused credit deduction (-₹X), referral points discount, and final net payment due today.
-- **7-Day Cancellation Lock**: The subscription dashboard cards compute whether an active plan was purchased more than 7 days ago. If so, the cancel trash button is disabled and renders a Lock icon with a descriptive tooltip explaining that cancellation is locked.
-
----
-
-## 🎨 UI Components
-
-### Using @codeswayam/ui
-
-All UI components are imported from shared package:
-
+### Step 2: Create Sub-Components in `_components/`
+Build single-responsibility components with strict prop contracts:
 ```typescript
-import {
-  Button,
-  Card,
-  Input,
-  Form,
-  Dialog,
-  // ... more components
-} from "@codeswayam/ui"
+// app/account/my-feature/_components/FeatureCard.tsx
+"use client";
+
+import React from "react";
+import type { FeatureItem } from "@/types";
+
+export function FeatureCard({ item }: { item: FeatureItem }) {
+  return (
+    <div className="p-4 border rounded-xl bg-white shadow-sm">
+      <h3 className="text-sm font-bold text-gray-900">{item.name}</h3>
+    </div>
+  );
+}
+```
+
+### Step 3: Export via Barrel File
+```typescript
+// app/account/my-feature/_components/index.ts
+export * from "./FeatureCard";
+```
+
+### Step 4: Write Thin Page Orchestrator
+```typescript
+// app/account/my-feature/page.tsx
+"use client";
+
+import { useEffect, useState } from "react";
+import { FeatureCard } from "./_components";
+import type { FeatureItem } from "@/types";
+
+export default function MyFeaturePage() {
+  const [items, setItems] = useState<FeatureItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // Fetch data via @/lib/api
+    setLoading(false);
+  }, []);
+
+  return (
+    <div className="space-y-6">
+      {items.map((item) => (
+        <FeatureCard key={item.id} item={item} />
+      ))}
+    </div>
+  );
+}
 ```
 
 ---
 
-## 🧪 Testing
+## 8. Development & Verification
 
+### Local Setup
 ```bash
-# Run tests
-npm test
-
-# Run with coverage
-npm test -- --coverage
-
-# E2E testing
-npm run test:e2e
-```
-
----
-
-## 🌍 Deployment
-
-### Deploy to Vercel
-
-```bash
-npm i -g vercel
-vercel
-```
-
-### Environment Variables (Production)
-- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
-- `CLERK_SECRET_KEY`
-- `NEXT_PUBLIC_API_BASE_URL` (production API URL)
-- `NEXT_PUBLIC_RAZORPAY_KEY_ID`
-
-### Clerk Configuration
-1. Update Clerk dashboard with production URLs
-2. Configure allowed origins
-3. Set up email templates
-4. Configure OAuth providers
-
----
-
-## 🤝 Contributing
-
-### Code Standards
-- Follow Next.js best practices
-- Use TypeScript strictly
-- Write accessible components
-- Test on mobile devices
-
-### Adding New Pages
-
-1. Create directory in `app/`
-2. Add `page.tsx` and `layout.tsx`
-3. Use Clerk authentication hooks
-4. Add navigation links
-5. Test authentication flow
-
----
-
-## 🐛 Troubleshooting
-
-### Clerk Not Working
-- Verify publishable key in `.env.local`
-- Check Clerk dashboard configuration
-- Clear browser cache
-- Restart dev server
-
-### Redirect Loop
-- Check redirect URLs in Clerk
-- Verify `NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL`
-- Check middleware configuration
-
-### Payment Not Processing
-- Verify Razorpay key
-- Check payment amount
-- Review browser console for errors
-
-### Build Errors
-```bash
-rm -rf .next node_modules
+# Install dependencies
 npm install
+
+# Run development server on port 3003
+npm run dev
+```
+
+### Type Checking & Build Validation
+```bash
+# Run strict TypeScript compilation check (0 errors required)
+npx tsc --noEmit
+
+# Test production build
 npm run build
 ```
-
----
-
-## 📚 Resources
-
-- [Clerk Documentation](https://clerk.com/docs)
-- [Next.js Documentation](https://nextjs.org/docs)
-- [Razorpay Documentation](https://razorpay.com/docs)
-- [Tailwind CSS](https://tailwindcss.com)
-
----
-
-## 📄 License
-
-ISC License
-
----
-
-## 📞 Support
-
-For issues:
-1. Check Clerk documentation
-2. Review error logs
-3. Check environment variables
-4. Open GitHub issue
-
----
-
-**Last Updated**: April 2026
-
-For more information, see the main [README.md](../../README.md)
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.

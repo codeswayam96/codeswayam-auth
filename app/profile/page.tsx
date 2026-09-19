@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { User, Mail, Calendar, Shield, Pencil, Loader2, Trash2, AlertTriangle, Zap, ExternalLink, Crown } from "lucide-react";
+import { User, Mail, Calendar, Shield, Pencil, Loader2, Trash2, AlertTriangle, Zap, ExternalLink, Crown, Clock, RefreshCcw } from "lucide-react";
 import { toast } from "sonner";
 import { updateProfile, deleteAccount, logout, fetchUserSubscriptions } from "@/lib/api";
 import { useProfile } from "./layout";
@@ -224,29 +224,57 @@ export default function AccountPage() {
             </div>
           ) : (
             <div className="space-y-2">
-              {subscriptions.map(sub => (
-                <div key={sub.id} className="flex items-center justify-between p-3 rounded-lg border bg-muted/20">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
-                      <Zap size={14} className="text-primary" />
+              {subscriptions.map(sub => {
+                const isExpired = sub.status === "active" && !!sub.expiresAt && new Date(sub.expiresAt).getTime() < Date.now();
+                return (
+                  <div
+                    key={sub.id}
+                    className="flex items-center justify-between p-3 rounded-lg border"
+                    style={isExpired
+                      ? { backgroundColor: "#fff5f5", borderColor: "#fca5a5" }
+                      : { backgroundColor: "rgba(0,0,0,0.02)", borderColor: "rgba(0,0,0,0.08)" }
+                    }
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <div
+                        className={`w-8 h-8 rounded-lg flex items-center justify-center ${isExpired ? "" : "bg-primary/10"}`}
+                        style={isExpired ? { backgroundColor: "#fee2e2" } : {}}
+                      >
+                        {isExpired
+                          ? <Clock size={14} className="text-red-500" />
+                          : <Zap size={14} className="text-primary" />}
+                      </div>
+                      <div>
+                        <p className={`text-sm font-medium ${isExpired ? "text-gray-500" : ""}`}>
+                          {sub.productName || sub.bundleName || "Plan"}
+                        </p>
+                        <p className={`text-[11px] capitalize ${isExpired ? "text-red-500 font-semibold" : "text-muted-foreground"}`}>
+                          {isExpired
+                            ? <>Expired · {sub.billingCycle}</>
+                            : <>{sub.billingCycle} · {sub.status}</>}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-sm font-medium">{sub.productName || sub.bundleName || "Plan"}</p>
-                      <p className="text-[11px] text-muted-foreground capitalize">{sub.billingCycle} · {sub.status}</p>
-                    </div>
+                    {isExpired ? (
+                      <Link
+                        href="/dashboard"
+                        className="text-xs font-bold text-red-600 hover:underline flex items-center gap-1"
+                      >
+                        <RefreshCcw size={11} /> Renew
+                      </Link>
+                    ) : sub.productDomain ? (
+                      <a
+                        href={`https://${sub.productDomain}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-primary hover:underline flex items-center gap-1"
+                      >
+                        Open <ExternalLink size={11} />
+                      </a>
+                    ) : null}
                   </div>
-                  {sub.productDomain && (
-                    <a
-                      href={`https://${sub.productDomain}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-primary hover:underline flex items-center gap-1"
-                    >
-                      Open <ExternalLink size={11} />
-                    </a>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </CardContent>
