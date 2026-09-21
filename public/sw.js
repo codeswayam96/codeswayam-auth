@@ -1,44 +1,48 @@
-// CodeSwayam Push Notification Service Worker
-// Copy this file to /public/sw.js in any app that needs push notifications.
+// CodeSwayam Web Push Service Worker
 
 self.addEventListener("push", (event) => {
-    if (!event.data) return;
+  if (!event.data) return;
 
-    let data = {};
-    try {
-        data = event.data.json();
-    } catch {
-        data = { title: "CodeSwayam", body: event.data.text() };
-    }
-
-    const title = data.title || "CodeSwayam";
+  try {
+    const data = event.data.json();
+    const title = data.title || "CodeSwayam Notification";
     const options = {
-        body: data.body || "",
-        icon: data.icon || "/icon-192.png",
-        badge: "/badge-72.png",
-        data: { url: data.url || "/" },
-        vibrate: [100, 50, 100],
-        requireInteraction: false,
+      body: data.body || "",
+      icon: data.icon || "/icon.png",
+      badge: "/badge.png",
+      data: {
+        url: data.url || "/dashboard",
+      },
+      vibrate: [100, 50, 100],
     };
 
     event.waitUntil(self.registration.showNotification(title, options));
+  } catch {
+    const text = event.data.text();
+    event.waitUntil(
+      self.registration.showNotification("CodeSwayam", {
+        body: text,
+      }),
+    );
+  }
 });
 
 self.addEventListener("notificationclick", (event) => {
-    event.notification.close();
-    const url = event.notification.data?.url || "/";
-    event.waitUntil(
-        clients
-            .matchAll({ type: "window", includeUncontrolled: true })
-            .then((clientList) => {
-                // Focus existing tab if already open
-                for (const client of clientList) {
-                    if (client.url === url && "focus" in client) {
-                        return client.focus();
-                    }
-                }
-                // Otherwise open a new tab
-                if (clients.openWindow) return clients.openWindow(url);
-            })
-    );
+  event.notification.close();
+  const targetUrl = event.notification.data?.url || "/dashboard";
+
+  event.waitUntil(
+    clients.matchAll({ type: "window", includeUncontrolled: true }).then((windowClients) => {
+      // Check if there is already a window open with this URL
+      for (const client of windowClients) {
+        if (client.url.includes(targetUrl) && "focus" in client) {
+          return client.focus();
+        }
+      }
+      // If not, open a new window
+      if (clients.openWindow) {
+        return clients.openWindow(targetUrl);
+      }
+    }),
+  );
 });

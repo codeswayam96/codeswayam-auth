@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   Dialog, DialogContent, DialogDescription,
@@ -35,6 +36,7 @@ export function BundleUpsellModal({
 }: BundleUpsellModalProps) {
   const [cycle, setCycle] = useState<BillingCycle>("monthly");
   const [usePoints, setUsePoints] = useState(false);
+  const [isPaymentOpen, setIsPaymentOpen] = useState(false);
 
   const monthlySpend = userSubscriptions
     .filter((s) => s.status === "active")
@@ -43,8 +45,26 @@ export function BundleUpsellModal({
   const activePoints = referralStats?.points?.active ?? 0;
 
   return (
-    <Dialog open={open} onOpenChange={() => onClose()}>
-      <DialogContent className="max-w-[640px]">
+    <Dialog open={open} onOpenChange={() => { if (!isPaymentOpen) onClose(); }}>
+      <DialogContent
+        overlayClassName={cn(
+          "transition-opacity duration-200",
+          isPaymentOpen && "!hidden !pointer-events-none !opacity-0 !z-[-1]"
+        )}
+        className={cn(
+          "max-w-[640px] transition-all duration-200",
+          isPaymentOpen && "!hidden !pointer-events-none scale-95 !z-[-1]"
+        )}
+        onInteractOutside={(e) => {
+          if (isPaymentOpen) e.preventDefault();
+        }}
+        onPointerDownOutside={(e) => {
+          if (isPaymentOpen) e.preventDefault();
+        }}
+        onFocusOutside={(e) => {
+          if (isPaymentOpen) e.preventDefault();
+        }}
+      >
         <DialogHeader>
           <DialogTitle>
             <div className="flex items-center gap-2.5">
@@ -93,11 +113,11 @@ export function BundleUpsellModal({
                         <h4 className="m-0 font-extrabold text-[15px] text-gray-900">{bundle.name}</h4>
                         <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
                           <p className="m-0 text-xs text-gray-500">{bundle.features.length} products included</p>
-                          {bundle.creditPoints && (
+                          {bundle.creditPoints != null && bundle.creditPoints > 0 ? (
                             <span className="inline-flex items-center text-[9px] font-extrabold text-violet-700 bg-violet-100 border border-violet-200 px-1.5 py-0.5 rounded-full">
                               +{bundle.creditPoints.toLocaleString()} points included
                             </span>
-                          )}
+                          ) : null}
                         </div>
                       </div>
                     </div>
@@ -130,6 +150,8 @@ export function BundleUpsellModal({
                       icon={<Crown size={15} />}
                       usePoints={usePoints}
                       returnUrl={returnUrl}
+                      onPaymentOpen={() => setIsPaymentOpen(true)}
+                      onPaymentClose={() => setIsPaymentOpen(false)}
                       onSuccess={() => { onSuccess(); onClose(); }}
                     />
                   </div>

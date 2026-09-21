@@ -20,6 +20,7 @@ import { RazorpayButton } from "@/components/razorpay-checkout";
 import type { ReferralStats } from "@/lib/api";
 import { BillingToggle } from "./BillingToggle";
 import { TierBadge } from "./TierBadge";
+import { cn } from "@/lib/utils";
 
 const TIER_STYLES: Record<string, { bg: string; border: string }> = {
   free:       { bg: "#f9fafb", border: "#e5e7eb" },
@@ -47,9 +48,11 @@ export function UpgradeModal({
   open, onClose, currentSub, allProducts, onSuccess,
   referralStats, returnUrl, activeSubProductIds,
 }: UpgradeModalProps) {
-  const [cycle, setCycle] = useState<BillingCycle>("monthly");
+  const isCurrentYearly = currentSub.billingCycle === "yearly";
+  const [cycle, setCycle] = useState<BillingCycle>(isCurrentYearly ? "yearly" : (currentSub.billingCycle === "monthly" ? "monthly" : "monthly"));
   const [selected, setSelected] = useState<PublicProduct | null>(null);
   const [usePoints, setUsePoints] = useState(false);
+  const [isPaymentOpen, setIsPaymentOpen] = useState(false);
 
   const currentProduct = allProducts.find((p) => p.id === currentSub.saasProductId)
     ?? allProducts.find((p) => normalizeKey((p as any).saasId) === normalizeKey(currentSub.productSaasId));
@@ -60,27 +63,50 @@ export function UpgradeModal({
     ?? currentSub.productSaasId?.replace(/[_-](free|standard|pro|enterprise|basic|starter)$/i, "")
   );
 
+  const isCycleUpgrade = currentSub.billingCycle === "monthly" && cycle === "yearly";
+
   const upgradablePlans = allProducts
-    .filter((p) =>
-      normalizeKey(p.productFamily) === currentFamily &&
-      currentFamily !== "" &&
-      PLAN_TIERS.indexOf((p.planTier as any) ?? "free") > currentTierIdx &&
-      !activeSubProductIds.has(p.id)
-    )
-    .sort((a, b) =>
-      PLAN_TIERS.indexOf((b.planTier as any) ?? "free") - PLAN_TIERS.indexOf((a.planTier as any) ?? "free")
-    );
+    .filter((p) => {
+      if (normalizeKey(p.productFamily) !== currentFamily || currentFamily === "") return false;
+      const pTierIdx = PLAN_TIERS.indexOf((p.planTier as any) ?? "free");
+
+      if (isCycleUpgrade) {
+        // When switching from monthly to yearly, user can switch current tier to yearly or choose any higher tier
+        return (p.id === currentProduct?.id || p.id === currentSub.saasProductId || !activeSubProductIds.has(p.id)) && pTierIdx >= currentTierIdx;
+      }
+
+      // Within the same billing cycle, only strictly higher tiers are valid upgrades
+      return pTierIdx > currentTierIdx && !activeSubProductIds.has(p.id);
+    })
+    .sort((a, b) => {
+      const tierA = PLAN_TIERS.indexOf((a.planTier as any) ?? "free");
+      const tierB = PLAN_TIERS.indexOf((b.planTier as any) ?? "free");
+      return tierA - tierB;
+    });
 
   useEffect(() => {
-    if (upgradablePlans.length > 0 && !selected) setSelected(upgradablePlans[0]);
+    if (upgradablePlans.length > 0) {
+      if (!selected || !upgradablePlans.some((p) => p.id === selected.id)) {
+        setSelected(upgradablePlans[0]);
+      }
+    } else {
+      setSelected(null);
+    }
   }, [upgradablePlans, selected]);
 
   useEffect(() => {
-    if (open) setSelected(null);
-  }, [open]);
+    if (open) {
+      setSelected(null);
+      setIsPaymentOpen(false);
+      setCycle(isCurrentYearly ? "yearly" : (currentSub.billingCycle === "yearly" ? "yearly" : "monthly"));
+    }
+  }, [open, currentSub.billingCycle, isCurrentYearly]);
 
   const plan = selected ?? upgradablePlans[0];
-  const currentPrice = cycle === "yearly" ? currentProduct?.pricing?.INR?.yearly : currentProduct?.pricing?.INR?.monthly;
+  const currentSubCycle = currentSub.billingCycle || "monthly";
+  const currentPrice = currentSub.amount && currentSub.amount > 0
+    ? currentSub.amount
+    : (currentSubCycle === "yearly" ? currentProduct?.pricing?.INR?.yearly : currentProduct?.pricing?.INR?.monthly);
   const upgradePrice = cycle === "yearly" ? plan?.pricing?.INR?.yearly : plan?.pricing?.INR?.monthly;
   const yearlySaving = plan?.pricing?.INR
     ? Math.max(0, plan.pricing.INR.monthly * 12 - plan.pricing.INR.yearly)
@@ -131,8 +157,26 @@ export function UpgradeModal({
   const keptFeats = (plan?.features ?? []).filter((f) => currentFeats.has(f));
 
   return (
-    <Dialog open={open} onOpenChange={() => onClose()}>
-      <DialogContent className="max-w-[720px] max-h-[88vh] overflow-hidden flex flex-col p-0">
+    <Dialog open={open} onOpenChange={() => { if (!isPaymentOpen) onClose(); }}>
+      <DialogContent
+        overlayClassName={cn(
+          "transition-opacity duration-200",
+          isPaymentOpen && "!hidden !pointer-events-none !opacity-0 !z-[-1]"
+        )}
+        className={cn(
+          "max-w-[720px] max-h-[88vh] overflow-hidden flex flex-col p-0 transition-all duration-200",
+          isPaymentOpen && "!hidden !pointer-events-none scale-95 !z-[-1]"
+        )}
+        onInteractOutside={(e) => {
+          if (isPaymentOpen) e.preventDefault();
+        }}
+        onPointerDownOutside={(e) => {
+          if (isPaymentOpen) e.preventDefault();
+        }}
+        onFocusOutside={(e) => {
+          if (isPaymentOpen) e.preventDefault();
+        }}
+      >
 
         <DialogHeader className="px-6 pt-5 pb-4 border-b border-gray-100 shrink-0 flex-row items-center justify-between gap-3 flex-wrap space-y-0">
           <div className="flex items-center gap-2.5">
@@ -143,11 +187,20 @@ export function UpgradeModal({
               <DialogTitle className="text-base font-extrabold text-gray-900">Change Your Plan</DialogTitle>
               <DialogDescription className="text-xs text-gray-500">
                 Currently on <strong>{currentSub.productName || currentSub.bundleName}</strong>
-                {currentPrice ? ` · ${formatInr(currentPrice)}/${cycle === "yearly" ? "yr" : "mo"}` : ""}
+                {currentPrice ? ` · ${formatInr(currentPrice)}/${currentSubCycle === "yearly" ? "yr" : "mo"}` : ""}
+                {isCurrentYearly && " (Annual Plan)"}
               </DialogDescription>
             </div>
           </div>
-          <BillingToggle cycle={cycle} onChange={setCycle} />
+          <BillingToggle
+            cycle={cycle}
+            onChange={(newCycle) => {
+              if (isCurrentYearly && newCycle === "monthly") return;
+              setCycle(newCycle);
+            }}
+            disabledCycle={isCurrentYearly ? "monthly" : undefined}
+            disabledReason={isCurrentYearly ? "Annual subscriptions upgrade to annual tiers to preserve your prepaid period." : undefined}
+          />
         </DialogHeader>
 
         {/* Scrollable body */}
@@ -157,9 +210,15 @@ export function UpgradeModal({
               <div className="w-14 h-14 rounded-2xl bg-violet-50 flex items-center justify-center">
                 <Crown size={24} className="text-violet-700" />
               </div>
-              <p className="font-bold text-gray-900">You&apos;re on the highest plan</p>
-              <p className="text-sm text-gray-500 max-w-[280px]">
-                There are no higher plans available in this product family.
+              <p className="font-bold text-gray-900">
+                {currentSub.billingCycle === "monthly" && cycle === "monthly"
+                  ? "You're on the highest monthly plan"
+                  : "You're on the highest plan"}
+              </p>
+              <p className="text-sm text-gray-500 max-w-[320px]">
+                {currentSub.billingCycle === "monthly" && cycle === "monthly"
+                  ? "Toggle to Yearly above to save 17% on your plan!"
+                  : "There are no higher plans available in this product family."}
               </p>
             </div>
           ) : (
@@ -197,19 +256,19 @@ export function UpgradeModal({
                         {p.planTier && <TierBadge tier={p.planTier} />}
                       </div>
                       <div>
-                        <span className="text-xl font-black text-gray-900">{price ? formatInr(price) : "Free"}</span>
-                        {price && price > 0 && <span className="text-[11px] text-gray-400">/{cycle === "yearly" ? "yr" : "mo"}</span>}
+                        <span className="text-xl font-black text-gray-900">{price != null && price > 0 ? formatInr(price) : "Free"}</span>
+                        {price != null && price > 0 ? <span className="text-[11px] text-gray-400">/{cycle === "yearly" ? "yr" : "mo"}</span> : null}
                       </div>
-                      {p.creditPoints && (
+                      {p.creditPoints != null && p.creditPoints > 0 ? (
                         <span className="inline-flex items-center gap-1 text-[9px] font-extrabold text-violet-700 bg-violet-50 border border-violet-200 px-1.5 py-0.5 rounded-full w-fit">
                           +{p.creditPoints.toLocaleString()} points included
                         </span>
-                      )}
-                      {cycle === "yearly" && saving > 0 && (
+                      ) : null}
+                      {cycle === "yearly" && saving > 0 ? (
                         <span className="inline-flex items-center gap-[3px] text-[10px] font-bold text-green-700 bg-green-50 border border-green-200 px-[7px] py-0.5 rounded-full w-fit">
                           <CheckCircle2 size={9} /> Save {formatInr(saving)}/yr
                         </span>
-                      )}
+                      ) : null}
                     </button>
                   );
                 })}
@@ -384,15 +443,19 @@ export function UpgradeModal({
                   currency="INR"
                   planName={plan.name}
                   label={
-                    PLAN_TIERS.indexOf((plan.planTier as any) ?? "standard") < currentTierIdx
-                      ? `Switch to ${plan.name}`
-                      : `Upgrade to ${plan.name}`
+                    plan.id === currentProduct?.id
+                      ? `Switch to Yearly (${formatInr(discountedPrice)}/yr)`
+                      : (PLAN_TIERS.indexOf((plan.planTier as any) ?? "standard") <= currentTierIdx
+                          ? `Switch to ${plan.name}`
+                          : `Upgrade to ${plan.name}`)
                   }
                   size="sm"
                   className="h-8 text-xs gap-1.5 font-bold"
                   icon={<ArrowRight size={13} />}
                   usePoints={usePoints}
                   upgradeFromSubscriptionId={currentSub.id}
+                  onPaymentOpen={() => setIsPaymentOpen(true)}
+                  onPaymentClose={() => setIsPaymentOpen(false)}
                   onSuccess={() => { onSuccess(); onClose(); }}
                   returnUrl={returnUrl}
                 />

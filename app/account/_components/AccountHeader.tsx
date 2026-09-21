@@ -1,6 +1,7 @@
 import React from "react";
 import Link from "next/link";
 import { Zap, User, Shield, LogOut } from "lucide-react";
+import { NotificationBell } from "@codeswayam/ui";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,10 +34,15 @@ export function AccountHeader({
           <span className="font-bold text-sm sm:text-base tracking-tight">CodeSwayam</span>
         </Link>
 
-        <div className="flex items-center gap-2 sm:gap-4">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <NotificationBell
+            onNavigate={(url) => { window.location.href = url; }}
+            onOpenSettings={() => { window.location.href = "/account/profile#notifications"; }}
+          />
+
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="flex items-center gap-2 hover:bg-accent/50 p-1 rounded-lg sm:rounded-xl transition-all border border-transparent hover:border-border outline-none">
+              <button className="flex items-center gap-2 hover:bg-accent/50 p-1 rounded-lg sm:rounded-xl transition-all border border-transparent hover:border-border outline-none cursor-pointer">
                 <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center text-xs font-bold ring-2 ring-background">
                   {initials}
                 </div>

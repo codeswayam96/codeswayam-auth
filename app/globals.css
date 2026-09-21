@@ -82,6 +82,21 @@
     color: hsl(var(--foreground));
     font-family: 'Inter', Arial, Helvetica, sans-serif;
   }
+
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  a,
+  input[type="button"],
+  input[type="submit"],
+  .cursor-pointer {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  [role="button"][aria-disabled="true"],
+  input:disabled {
+    cursor: not-allowed;
+  }
 }
 
 /* Scrollbar */
@@ -94,6 +109,28 @@
 [data-radix-popper-content-wrapper] { z-index: 50 !important; }
 [data-radix-dialog-overlay] { z-index: 40 !important; }
 [data-radix-dialog-content] { z-index: 50 !important; }
+
+/* Razorpay Payment Gateway must always be on top of all modals, dialogs, and navigation */
+.razorpay-container,
+div[class*="razorpay-container"],
+iframe[class*="razorpay"] {
+  z-index: 2147483647 !important;
+  pointer-events: auto !important;
+}
+
+.razorpay-backdrop,
+div[class*="razorpay-backdrop"] {
+  z-index: 2147483646 !important;
+  pointer-events: auto !important;
+}
+
+/* When Razorpay modal is active, neutralize any background dialog overlays that might block interaction */
+body:has(.razorpay-container) [data-state="open"].fixed.inset-0,
+body:has(div[class*="razorpay-container"]) [data-state="open"].fixed.inset-0,
+body:has(iframe[class*="razorpay"]) [data-state="open"].fixed.inset-0 {
+  pointer-events: none !important;
+  z-index: -1 !important;
+}
 
 @keyframes shimmer {
   0% { transform: translateX(-100%); }

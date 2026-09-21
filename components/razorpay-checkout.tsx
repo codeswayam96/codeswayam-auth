@@ -62,6 +62,8 @@ export interface RazorpayButtonProps {
    */
   returnUrl?: string;
   upgradeFromSubscriptionId?: number;
+  onPaymentOpen?: () => void;
+  onPaymentClose?: () => void;
 }
 
 // ─── Component ─────────────────────────────────────────────────────────────────
@@ -83,6 +85,8 @@ export function RazorpayButton({
   usePoints = false,
   returnUrl,
   upgradeFromSubscriptionId,
+  onPaymentOpen,
+  onPaymentClose,
 }: RazorpayButtonProps) {
   const [loading, setLoading] = useState(false);
 
@@ -168,6 +172,7 @@ export function RazorpayButton({
         },
         modal: {
           ondismiss: () => {
+            onPaymentClose?.();
             toast.info("Payment cancelled");
             setLoading(false);
           },
@@ -192,8 +197,10 @@ export function RazorpayButton({
             });
 
             toast.success(`🎉 Subscribed to ${planName}!`);
+            onPaymentClose?.();
             handleSuccess();
           } catch (e: any) {
+            onPaymentClose?.();
             const msg = e.message || "Payment verification failed";
             toast.error(msg);
             onError?.(msg);
@@ -205,13 +212,16 @@ export function RazorpayButton({
 
       const rzp = new window.Razorpay(options);
       rzp.on("payment.failed", (response: any) => {
+        onPaymentClose?.();
         const msg = response?.error?.description || "Payment failed";
         toast.error(msg);
         onError?.(msg);
         setLoading(false);
       });
+      onPaymentOpen?.();
       rzp.open();
     } catch (e: any) {
+      onPaymentClose?.();
       const msg = e.message || "Failed to initiate payment";
       toast.error(msg);
       onError?.(msg);
@@ -220,6 +230,7 @@ export function RazorpayButton({
   }, [
     loading, saasProductId, bundleId, billingCycle, currency,
     planName, onSuccess, onError, usePoints, upgradeFromSubscriptionId,
+    onPaymentOpen, onPaymentClose,
   ]);
 
   return (
