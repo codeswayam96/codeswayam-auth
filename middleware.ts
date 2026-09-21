@@ -82,8 +82,8 @@ export async function middleware(req: NextRequest) {
         const redirectParam = req.nextUrl.searchParams.get("redirect");
 
         if (redirectParam) {
-            // Relative paths are always safe
-            if (redirectParam.startsWith("/")) {
+            // Relative paths are always safe (except /sso which could create a loop if ticket issuance failed)
+            if (redirectParam.startsWith("/") && !redirectParam.startsWith("/sso")) {
                 return NextResponse.redirect(new URL(redirectParam, req.url));
             }
 
