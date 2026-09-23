@@ -121,6 +121,17 @@ export default function HomePage() {
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
+        // Safety check: if an app forwarded an unauthenticated user to the home page with ?redirect=...
+        // redirect them immediately to /sso with all parameters preserved.
+        if (typeof window !== "undefined") {
+            const search = window.location.search;
+            const params = new URLSearchParams(search);
+            if (params.has("redirect")) {
+                router.replace(`/sso${search}`);
+                return;
+            }
+        }
+
         const checkAuth = async () => {
             const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
             const isAuthenticated = await checkUserAuth(apiUrl);

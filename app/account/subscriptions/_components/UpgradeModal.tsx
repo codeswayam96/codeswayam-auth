@@ -38,6 +38,7 @@ interface UpgradeModalProps {
   referralStats: ReferralStats | null;
   returnUrl?: string;
   activeSubProductIds: Set<number>;
+  currency?: "INR" | "USD";
 }
 
 /**
@@ -46,7 +47,7 @@ interface UpgradeModalProps {
  */
 export function UpgradeModal({
   open, onClose, currentSub, allProducts, onSuccess,
-  referralStats, returnUrl, activeSubProductIds,
+  referralStats, returnUrl, activeSubProductIds, currency = "INR",
 }: UpgradeModalProps) {
   const isCurrentYearly = currentSub.billingCycle === "yearly";
   const [cycle, setCycle] = useState<BillingCycle>(isCurrentYearly ? "yearly" : (currentSub.billingCycle === "monthly" ? "monthly" : "monthly"));
@@ -440,7 +441,7 @@ export function UpgradeModal({
                 <RazorpayButton
                   saasProductId={plan.id}
                   billingCycle={cycle}
-                  currency="INR"
+                  currency={currency}
                   planName={plan.name}
                   label={
                     plan.id === currentProduct?.id

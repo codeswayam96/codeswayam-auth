@@ -53,6 +53,17 @@ function getAuthCookie(req: NextRequest): string | undefined {
 export async function middleware(req: NextRequest) {
     const { pathname } = req.nextUrl;
 
+    // ── 0. Handle root path with SSO redirect parameter ──────────────────────
+    // If an app forwards an unauthenticated user to the auth base URL with ?redirect=...
+    // route them directly into the SSO handshake instead of the marketing landing page.
+    if (pathname === "/" && req.nextUrl.searchParams.has("redirect")) {
+        const ssoUrl = new URL("/sso", req.url);
+        req.nextUrl.searchParams.forEach((value, key) => {
+            ssoUrl.searchParams.set(key, value);
+        });
+        return NextResponse.redirect(ssoUrl);
+    }
+
     // ── 1. Check route type ──────────────────────────────────────────────────
     const isPublic    = PUBLIC_PREFIXES.some((p) => pathname.startsWith(p));
     const isProtected = PROTECTED_PREFIXES.some((p) => pathname.startsWith(p));
@@ -60,10 +71,6 @@ export async function middleware(req: NextRequest) {
     const isAuthenticated = Boolean(authToken);
 
     // ── 2. Guard protected routes AT THE EDGE ───────────────────────────────
-    // This is the fix for `GET /account 404 in 206ms`.
-    // Previously /account was not in the matcher, so Next.js would start rendering
-    // the layout, hit the client-side auth check in useEffect, fail, and log a 404.
-    // Now we intercept at the edge — before any page renders.
     if (isProtected && !isAuthenticated) {
         const loginUrl = new URL("/login", req.url);
         // Preserve the original destination so login can redirect back
@@ -82,8 +89,8 @@ export async function middleware(req: NextRequest) {
         const redirectParam = req.nextUrl.searchParams.get("redirect");
 
         if (redirectParam) {
-            // Relative paths are always safe (except /sso which could create a loop if ticket issuance failed)
-            if (redirectParam.startsWith("/") && !redirectParam.startsWith("/sso")) {
+            // Relative paths are safe (including /sso which will issue ticket and return to client)
+            if (redirectParam.startsWith("/")) {
                 return NextResponse.redirect(new URL(redirectParam, req.url));
             }
 
@@ -117,6 +124,8 @@ export async function middleware(req: NextRequest) {
 
 export const config = {
     matcher: [
+        // ── Root landing (intercept if ?redirect is present) ─────────────────
+        "/",
         // ── Auth routes (redirect authenticated users away) ──────────────────
         "/login",
         "/signup",

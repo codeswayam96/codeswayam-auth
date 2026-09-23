@@ -24,7 +24,9 @@ import {
   BundleUpsellModal, CancelDialog, PastSubscriptionRow,
   SubscriptionGroup, UpgradeModal,
 } from "./_components";
-import { Crown, Package as PkgIcon } from "lucide-react";
+import { Crown, Package as PkgIcon, ArrowLeft, Globe } from "lucide-react";
+import { useCurrency } from "@/lib/currency";
+import { resolveAppContext } from "@/lib/app-context";
 
 // ─── Stat Card (local to this page only) ─────────────────────────────────────
 
@@ -52,8 +54,11 @@ function StatCard({ label, value, iconBg, iconColor, icon }: {
 export default function SubscriptionsPage() {
   useAccount(); // ensures auth context is available
   const searchParams = useSearchParams();
-  const returnUrl = searchParams.get("returnUrl") ?? undefined;
+  const rawReturnUrl = searchParams.get("returnUrl") ?? undefined;
+  const appContext = resolveAppContext(searchParams);
+  const returnUrl = rawReturnUrl || appContext?.returnUrl;
 
+  const { currency, setCurrency } = useCurrency();
   const [subscriptions, setSubscriptions] = useState<UserSubscription[]>([]);
   const [allProducts, setAllProducts]     = useState<PublicProduct[]>([]);
   const [allBundles, setAllBundles]       = useState<PublicBundle[]>([]);
@@ -135,11 +140,61 @@ export default function SubscriptionsPage() {
 
   return (
     <div className="flex flex-col gap-6 pb-12">
+      {/* ── Top Return Banner ── */}
+      {returnUrl && (
+        <div className="flex items-center justify-between pb-3 border-b border-gray-200">
+          <a
+            href={returnUrl}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-violet-700 hover:underline group"
+          >
+            <ArrowLeft size={14} className="group-hover:-translate-x-0.5 transition-transform" />
+            Back to {appContext?.name || "App"}
+          </a>
+          {appContext && (
+            <span className="text-xs text-gray-500">
+              Managing subscriptions for <strong className="text-gray-900">{appContext.name}</strong>
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* ── Controls (Workspace & Currency Selector) ── */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        {appContext ? (
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-violet-50 border border-violet-200 text-xs">
+            <span className="font-semibold text-violet-900">
+              {appContext.name}
+            </span>
+            <span className="text-gray-400">•</span>
+            <span className="text-gray-600">Active app workspace</span>
+          </div>
+        ) : (
+          <div />
+        )}
+        <div className="flex items-center gap-1 rounded-lg border border-gray-200 p-1 bg-white ml-auto">
+          <button
+            onClick={() => setCurrency("INR")}
+            className={`flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-md transition-all ${
+              currency === "INR" ? "bg-violet-700 text-white font-semibold shadow-sm" : "text-gray-600 hover:text-gray-900"
+            }`}
+          >
+            <Globe size={11} /> ₹ INR
+          </button>
+          <button
+            onClick={() => setCurrency("USD")}
+            className={`flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-md transition-all ${
+              currency === "USD" ? "bg-violet-700 text-white font-semibold shadow-sm" : "text-gray-600 hover:text-gray-900"
+            }`}
+          >
+            <Globe size={11} /> $ USD
+          </button>
+        </div>
+      </div>
 
       {/* ── Stats Bar ── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard label="Active Plans"   value={String(activeSubscriptions.length)}  iconBg="#dcfce7" iconColor="#16a34a" icon={<CreditCard size={17} />} />
-        <StatCard label="Monthly Spend"  value={formatAmount(totalMonthlySpend, "INR")} iconBg="#ede9fe" iconColor="#7c3aed" icon={<DollarSign size={17} />} />
+        <StatCard label="Monthly Spend"  value={formatAmount(totalMonthlySpend, currency)} iconBg="#ede9fe" iconColor="#7c3aed" icon={<DollarSign size={17} />} />
         <StatCard
           label="Next Renewal"
           value={nextRenewal?.expiresAt
@@ -263,6 +318,7 @@ export default function SubscriptionsPage() {
           referralStats={referralStats}
           returnUrl={returnUrl}
           activeSubProductIds={activeSubProductIds}
+          currency={currency}
           onSuccess={loadData}
         />
       )}

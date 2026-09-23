@@ -12,8 +12,13 @@ const navLinks = [
     { href: "#contact", label: "Contact" },
 ];
 
-export default function Navbar() {
+import { useSearchParams } from "next/navigation";
+import { Suspense } from "react";
+
+function NavbarContent() {
     const [open, setOpen] = useState(false);
+    const searchParams = useSearchParams();
+    const queryStr = searchParams?.toString() ? `?${searchParams.toString()}` : "";
 
     return (
         <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -39,10 +44,10 @@ export default function Navbar() {
 
                 <div className="hidden md:flex items-center gap-2 ml-auto">
                     <Button variant="ghost" size="sm" asChild>
-                        <Link href="/login">Sign in</Link>
+                        <Link href={`/login${queryStr}`}>Sign in</Link>
                     </Button>
                     <Button size="sm" asChild>
-                        <Link href="/signup">Get Started Free</Link>
+                        <Link href={`/signup${queryStr}`}>Get Started Free</Link>
                     </Button>
                 </div>
 
@@ -69,14 +74,24 @@ export default function Navbar() {
                     ))}
                     <div className="pt-3 flex flex-col gap-2">
                         <Button variant="outline" asChild className="w-full">
-                            <Link href="/login">Sign in</Link>
+                            <Link href={`/login${queryStr}`}>Sign in</Link>
                         </Button>
                         <Button asChild className="w-full">
-                            <Link href="/signup">Get Started Free</Link>
+                            <Link href={`/signup${queryStr}`}>Get Started Free</Link>
                         </Button>
                     </div>
                 </div>
             )}
         </header>
+    );
+}
+
+export default function Navbar() {
+    return (
+        <Suspense fallback={
+            <header className="sticky top-0 z-50 w-full border-b bg-background/95 h-16" />
+        }>
+            <NavbarContent />
+        </Suspense>
     );
 }

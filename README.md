@@ -204,7 +204,9 @@ codeswayam-auth/
 │
 ├── lib/                                 # Platform utilities & API client
 │   ├── api.ts                           # Typed API client functions
+│   ├── app-context.ts                   # Originating app context & return URL resolution
 │   ├── auth-redirect.ts                 # Safe redirection and auth token verification
+│   ├── currency.ts                      # Multi-currency detection (INR/USD) & shared cookie sync
 │   ├── domains.ts                       # Dynamic trusted domain allowlist resolution
 │   └── signup-source.ts                 # Attribution query parameter parsing
 │
@@ -212,7 +214,7 @@ codeswayam-auth/
 │   ├── subscription.ts                  # BillingCycle, PlanTier, PublicProduct, PublicBundle
 │   └── index.ts
 │
-└── middleware.ts                        # Edge route guarding, loop-protection, and token checking
+└── middleware.ts                        # Edge route guarding, root interception, loop-protection
 ```
 
 ---
@@ -388,4 +390,45 @@ npx tsc --noEmit
 
 # Test production build
 npm run build
+```
+
+---
+
+## 9. Cross-App Integration Guide for Developers
+
+### How Client Apps Trigger SSO (with Branding & Return Context)
+In any connected app (e.g. `auraflow`, `admin-panel`, or a new service):
+```typescript
+import { withCSWAuth } from "@codeswayam/auth/middleware";
+
+export default withCSWAuth({
+  appName: "AuraFlow",  // Friendly name shown on SSO login & subscription pages
+  ssoUrl: process.env.NEXT_PUBLIC_APP_AUTH_URL,
+  callbackPath: "/auth/callback",
+  publicPaths: ["/", "/auth/callback", "/api"],
+});
+```
+When unauthenticated users hit protected routes:
+1. They are redirected to `auth.codeswayam.com/sso?redirect=...&app=AuraFlow`.
+2. If unauthenticated, `codeswayam-auth` shows:
+   - `Sign in to continue to AuraFlow • Single Sign-On`
+   - A `← Back to AuraFlow` direct link.
+3. Upon login, the user is seamlessly returned to their original destination on AuraFlow.
+
+### Multi-Currency System (INR vs USD)
+- **Why NOT `/inr` or `/dollar` routes**: Prevents duplicate content indexing, broken shared links, and state fragmentation.
+- **Enterprise Detection**:
+  - `?currency=usd` or `?currency=inr` query override.
+  - Persistent `csw_currency` cookie shared across `.codeswayam.com`.
+  - Geo-IP & Timezone auto-fallback (`Asia/Kolkata` -> `INR`, international -> `USD`).
+  - Interactive `[ ₹ INR | $ USD ]` toggle on all pricing screens.
+
+### App-Scoped Subscription Plans
+When directing users to subscribe or upgrade from a specific app:
+```typescript
+const upgradeUrl = `${authUrl}/profile/subscription?app=auraflow&returnUrl=${encodeURIComponent(window.location.href)}`;
+```
+1. **Catalog Scoping**: Only AuraFlow plans are displayed by default, keeping users focused. A `Browse All Apps & Bundles →` toggle is available.
+2. **Top Navigation**: Displays `← Back to AuraFlow` linking back to `returnUrl`.
+3. **Post-Purchase Auto-Redirect**: On successful Razorpay payment, a 3-second countdown automatically returns the user to the app, with an immediate manual `[ Return Now ]` button.
 ```

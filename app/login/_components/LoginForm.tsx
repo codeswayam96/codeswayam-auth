@@ -16,9 +16,10 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
 
 interface LoginFormProps {
   redirectUrl: string;
+  queryStr?: string;
 }
 
-export function LoginForm({ redirectUrl }: LoginFormProps) {
+export function LoginForm({ redirectUrl, queryStr }: LoginFormProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -139,7 +140,10 @@ export function LoginForm({ redirectUrl }: LoginFormProps) {
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <Label htmlFor="password">Password</Label>
-            <Link href="/forgot-password" className="text-xs text-primary hover:underline">
+            <Link
+              href={`/forgot-password${queryStr ? `?${queryStr}` : ""}`}
+              className="text-xs text-primary hover:underline"
+            >
               Forgot password?
             </Link>
           </div>

@@ -75,6 +75,11 @@ function SSOHandler() {
 
                     const loginUrl = new URL("/login", window.location.origin);
                     loginUrl.searchParams.set("redirect", window.location.pathname + window.location.search);
+                    const app = searchParams.get("app");
+                    if (app) loginUrl.searchParams.set("app", app);
+                    const ref = searchParams.get("ref");
+                    if (ref) loginUrl.searchParams.set("ref", ref);
+
                     window.location.href = loginUrl.toString();
                 } else {
                     // Backend error (e.g. 404, 500) — DO NOT redirect to /login to prevent infinite loops!

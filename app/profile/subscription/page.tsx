@@ -35,9 +35,12 @@ import {
 } from "@/lib/api";
 import { RazorpayButton } from "@/components/razorpay-checkout";
 
+import { useCurrency, type Currency } from "@/lib/currency";
+import { resolveAppContext } from "@/lib/app-context";
+import { ArrowLeft } from "lucide-react";
+
 // ─── Types ─────────────────────────────────────────────────────────────────────
 type BillingCycle = "monthly" | "yearly";
-type Currency = "INR" | "USD";
 
 // Tier order — must match the backend planTier values
 const TIERS = ["free", "standard", "pro", "enterprise"];
@@ -195,16 +198,20 @@ function PlanCard({
 export default function SubscriptionPage() {
     const { user } = useProfile();
     const searchParams = useSearchParams();
-    const returnUrl = searchParams.get("returnUrl") ?? undefined;
+    const rawReturnUrl = searchParams.get("returnUrl") ?? undefined;
+    const appContext = resolveAppContext(searchParams);
+    const returnUrl = rawReturnUrl || appContext?.returnUrl;
 
     const [billingCycle, setBillingCycle] = useState<BillingCycle>("yearly");
-    const [currency, setCurrency] = useState<Currency>("INR");
+    const { currency, setCurrency } = useCurrency();
     const [plans, setPlans] = useState<{ products: SaasProduct[]; bundles: BundlePlan[] } | null>(null);
     const [subscriptions, setSubscriptions] = useState<UserSubscription[]>([]);
     const [loadingPlans, setLoadingPlans] = useState(true);
     const [cancelId, setCancelId] = useState<number | null>(null);
     const [canceling, setCanceling] = useState(false);
     const [paymentSuccess, setPaymentSuccess] = useState<string | null>(null);
+    const [showAllProducts, setShowAllProducts] = useState(false);
+    const [countdown, setCountdown] = useState<number | null>(null);
 
     const activeSubs = subscriptions.filter(s => s.status === "active");
 
@@ -244,7 +251,24 @@ export default function SubscriptionPage() {
     const handlePaymentSuccess = (planName: string) => {
         setPaymentSuccess(planName);
         loadData();
+        if (returnUrl) {
+            setCountdown(3);
+        }
     };
+
+    useEffect(() => {
+        if (countdown === null) return;
+        if (countdown <= 0) {
+            if (returnUrl) {
+                window.location.href = returnUrl;
+            }
+            return;
+        }
+        const timer = setTimeout(() => {
+            setCountdown((prev) => (prev !== null ? prev - 1 : null));
+        }, 1000);
+        return () => clearTimeout(timer);
+    }, [countdown, returnUrl]);
 
     // Compute which plans to hide — already active or lower/equal tier in same family
     const hiddenIds = plans
@@ -256,23 +280,78 @@ export default function SubscriptionPage() {
     const activeBundleIds = new Set(activeSubs.map(s => s.bundleId).filter(Boolean) as number[]);
     const visibleBundles = plans?.bundles.filter(b => !activeBundleIds.has(Number(b.id))) ?? [];
 
-    const hasUpgrades = visibleProducts.length > 0 || visibleBundles.length > 0;
+    // App-scoped filtering
+    const isAppScoped = Boolean(appContext && !showAllProducts);
+    const displayedProducts = isAppScoped
+        ? (() => {
+            const scoped = visibleProducts.filter(p => {
+                const fam = normalizeFamily(p.productFamily || p.tag);
+                const prefix = normalizeSaasPrefix(p.saasId);
+                const slug = appContext!.slug.toLowerCase();
+                return fam === slug || prefix === slug || fam.includes(slug) || prefix.includes(slug) || p.name.toLowerCase().includes(slug);
+            });
+            return scoped.length > 0 ? scoped : visibleProducts;
+        })()
+        : visibleProducts;
+
+    const hasUpgrades = displayedProducts.length > 0 || (!isAppScoped && visibleBundles.length > 0);
 
     if (!user) return null;
 
     return (
         <div className="space-y-8">
+            {/* Top Return Banner */}
+            {returnUrl && (
+                <div className="flex items-center justify-between pb-3 border-b border-border/40">
+                    <a
+                        href={returnUrl}
+                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline group"
+                    >
+                        <ArrowLeft size={14} className="group-hover:-translate-x-0.5 transition-transform" />
+                        Back to {appContext?.name || "App"}
+                    </a>
+                    {appContext && (
+                        <span className="text-xs text-muted-foreground">
+                            Viewing plans for <strong className="text-foreground">{appContext.name}</strong>
+                        </span>
+                    )}
+                </div>
+            )}
+
             {/* Payment Success Banner */}
             {paymentSuccess && (
-                <div className="flex items-center gap-3 rounded-xl bg-emerald-50 border border-emerald-200 px-5 py-4">
-                    <CheckCircle2 size={22} className="text-emerald-600 shrink-0" />
-                    <div>
-                        <p className="font-semibold text-emerald-900">Subscription Activated!</p>
-                        <p className="text-sm text-emerald-700">You now have access to <strong>{paymentSuccess}</strong>.</p>
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 rounded-xl bg-emerald-50 border border-emerald-200 px-5 py-4">
+                    <div className="flex items-center gap-3">
+                        <CheckCircle2 size={24} className="text-emerald-600 shrink-0" />
+                        <div>
+                            <p className="font-semibold text-emerald-900">Subscription Activated!</p>
+                            <p className="text-sm text-emerald-700">
+                                You now have access to <strong>{paymentSuccess}</strong>.
+                                {returnUrl && countdown !== null && countdown > 0 && (
+                                    <span> Returning to {appContext?.name || "your app"} in <strong>{countdown}s</strong>...</span>
+                                )}
+                            </p>
+                        </div>
                     </div>
-                    <button className="ml-auto text-emerald-500 hover:text-emerald-700" onClick={() => setPaymentSuccess(null)}>
-                        <X size={16} />
-                    </button>
+                    <div className="flex items-center gap-2">
+                        {returnUrl && (
+                            <a
+                                href={returnUrl}
+                                className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-colors"
+                            >
+                                Return to {appContext?.name || "App"} Now
+                            </a>
+                        )}
+                        <button
+                            className="text-xs font-medium text-emerald-800 hover:bg-emerald-100 px-2.5 py-1.5 rounded-md"
+                            onClick={() => {
+                                setPaymentSuccess(null);
+                                setCountdown(null);
+                            }}
+                        >
+                            Stay on Billing
+                        </button>
+                    </div>
                 </div>
             )}
 
@@ -423,14 +502,43 @@ export default function SubscriptionPage() {
                         <Crown size={36} className="mx-auto mb-3 opacity-30" />
                         <p className="text-sm font-semibold">You&apos;re on the highest available plan</p>
                         <p className="text-xs mt-1">No further upgrades are available at this time.</p>
+                        {isAppScoped && (
+                            <button
+                                onClick={() => setShowAllProducts(true)}
+                                className="mt-3 text-xs font-semibold text-primary hover:underline"
+                            >
+                                Browse All CodeSwayam Apps & Bundles →
+                            </button>
+                        )}
                     </div>
                 ) : (
                     <div className="space-y-8">
-                        {visibleProducts.length > 0 && (
+                        {appContext && (
+                            <div className="flex items-center justify-between p-3.5 rounded-xl bg-primary/5 border border-primary/20 text-xs">
+                                <div className="flex items-center gap-2">
+                                    <Package size={15} className="text-primary" />
+                                    <span className="font-medium text-foreground">
+                                        {isAppScoped
+                                            ? `Showing plans specifically tailored for ${appContext.name}`
+                                            : `Browsing all CodeSwayam products`}
+                                    </span>
+                                </div>
+                                <button
+                                    onClick={() => setShowAllProducts(!showAllProducts)}
+                                    className="font-semibold text-primary hover:underline cursor-pointer"
+                                >
+                                    {isAppScoped ? "Browse All Apps & Bundles →" : `← Filter only ${appContext.name}`}
+                                </button>
+                            </div>
+                        )}
+
+                        {displayedProducts.length > 0 && (
                             <div>
-                                <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">Individual Products</h4>
-                                <div className={`grid gap-4 ${visibleProducts.length === 1 ? "grid-cols-1 max-w-sm" : visibleProducts.length === 2 ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"}`}>
-                                    {visibleProducts.map(product => (
+                                <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">
+                                    {isAppScoped ? `${appContext?.name} Plans` : "Individual Products"}
+                                </h4>
+                                <div className={`grid gap-4 ${displayedProducts.length === 1 ? "grid-cols-1 max-w-sm" : displayedProducts.length === 2 ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"}`}>
+                                    {displayedProducts.map(product => (
                                         <PlanCard
                                             key={product.id}
                                             plan={product}
@@ -445,7 +553,7 @@ export default function SubscriptionPage() {
                             </div>
                         )}
 
-                        {visibleBundles.length > 0 && (
+                        {(!isAppScoped || showAllProducts) && visibleBundles.length > 0 && (
                             <div>
                                 <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4">Bundles</h4>
                                 <div className={`grid gap-4 ${visibleBundles.length === 1 ? "grid-cols-1 max-w-sm" : "grid-cols-1 sm:grid-cols-2"}`}>

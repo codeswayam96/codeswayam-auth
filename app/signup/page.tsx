@@ -11,9 +11,10 @@ import {
   CardDescription,
   CardFooter,
 } from "@/components/ui/card";
-import { Zap } from "lucide-react";
+import { Zap, ArrowLeft } from "lucide-react";
 import { checkUserAuth, isAllowedRedirect } from "@/lib/auth-redirect";
 import { resolveSignupSource } from "@/lib/signup-source";
+import { resolveAppContext } from "@/lib/app-context";
 import { BrandLoader } from "@/components/brand-loader";
 import { SignupForm } from "./_components";
 
@@ -56,30 +57,63 @@ function SignupPageInner() {
 
   const redirectUrl = getRedirectUrl();
   const signupSource = resolveSignupSource(searchParams);
+  const appContext = resolveAppContext(searchParams);
+  const queryStr = searchParams?.toString() || "";
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center p-4 bg-background">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center space-y-2">
+      {appContext?.returnUrl && (
+        <div className="w-full max-w-md mb-3 flex items-center justify-between text-xs text-muted-foreground">
+          <a
+            href={appContext.returnUrl}
+            className="inline-flex items-center gap-1.5 hover:text-foreground transition-colors group"
+          >
+            <ArrowLeft size={13} className="group-hover:-translate-x-0.5 transition-transform" />
+            Back to {appContext.name}
+          </a>
+        </div>
+      )}
+
+      <Card className="w-full max-w-md shadow-xl border-border/60">
+        <CardHeader className="text-center space-y-2 pb-4">
           <Link
             href="/"
             className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-lg hover:opacity-90 transition-opacity"
           >
             <Zap size={24} />
           </Link>
-          <CardTitle className="text-2xl">Join CodeSwayam</CardTitle>
-          <CardDescription>
-            One account to unlock the entire SaaS ecosystem
-          </CardDescription>
+
+          {appContext ? (
+            <div className="space-y-1 pt-1">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-semibold mb-1">
+                <span>{appContext.name}</span>
+                <span className="text-muted-foreground/60">•</span>
+                <span className="text-muted-foreground font-normal">Single Sign-On</span>
+              </div>
+              <CardTitle className="text-2xl font-bold tracking-tight">Join CodeSwayam</CardTitle>
+              <CardDescription>
+                Create your account to start using {appContext.name}
+              </CardDescription>
+            </div>
+          ) : (
+            <div className="space-y-1 pt-1">
+              <CardTitle className="text-2xl font-bold tracking-tight">Join CodeSwayam</CardTitle>
+              <CardDescription>
+                One account to unlock the entire SaaS ecosystem
+              </CardDescription>
+            </div>
+          )}
         </CardHeader>
+
         <CardContent>
           <SignupForm redirectUrl={redirectUrl} signupSource={signupSource} />
         </CardContent>
-        <CardFooter className="justify-center">
+
+        <CardFooter className="justify-center border-t border-border/40 pt-4">
           <p className="text-sm text-muted-foreground">
             Already have an account?{" "}
             <Link
-              href={`/login${searchParams.get("redirect") ? `?redirect=${encodeURIComponent(searchParams.get("redirect")!)}` : ""}`}
+              href={`/login${queryStr ? `?${queryStr}` : ""}`}
               className="font-semibold text-primary hover:underline"
             >
               Sign in
