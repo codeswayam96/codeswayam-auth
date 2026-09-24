@@ -23,76 +23,105 @@ function SSOHandler() {
     const redirectUrl = searchParams.get("redirect") || searchParams.get("redirect_url");
 
     useEffect(() => {
+        let isMounted = true;
+
         const handleSSO = async () => {
             // ── No redirect target: just go to account dashboard ────────────
             if (!redirectUrl) {
-                router.push("/dashboard");
+                if (isMounted) router.push("/dashboard");
                 return;
             }
 
             // ── Security: validate redirect is a trusted domain ──────────────
             const allowed = await isAllowedRedirect(redirectUrl);
+            if (!isMounted) return;
+
             if (!allowed) {
                 console.error("[CSW SSO] Blocked redirect to untrusted domain:", redirectUrl);
                 router.push("/dashboard");
                 return;
             }
 
-            try {
-                // ── Try to get an SSO ticket for the current session ─────────
-                // We send credentials:include for same-domain (cookie) auth,
-                // AND inject the stored Bearer token for cross-domain (localStorage) auth.
-                const storedToken = typeof window !== "undefined"
-                    ? localStorage.getItem("csw_token")
-                    : null;
+            // Retry loop for transient network glitches & React StrictMode unmount races
+            const MAX_RETRIES = 3;
+            for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+                if (!isMounted) return;
 
-                const res = await fetch(`${API_URL}/auth/sso/ticket`, {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        // Inject Bearer token for cross-domain scenarios
-                        // (e.g. this auth page is on auth.codeswayam.com but the
-                        //  user's JWT came from a localStorage-based login)
-                        ...(storedToken ? { Authorization: `Bearer ${storedToken}` } : {}),
-                    },
-                    body: JSON.stringify({}),
-                    credentials: "include",
-                });
+                try {
+                    // ── Try to get an SSO ticket for the current session ─────────
+                    const storedToken = typeof window !== "undefined"
+                        ? localStorage.getItem("csw_token")
+                        : null;
 
-                if (res.ok) {
-                    const { ticket } = await res.json();
-                    console.log("[CSW SSO] Ticket acquired, redirecting to client.");
+                    const res = await fetch(`${API_URL}/auth/sso/ticket`, {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            ...(storedToken ? { Authorization: `Bearer ${storedToken}` } : {}),
+                        },
+                        body: JSON.stringify({}),
+                        credentials: "include",
+                    });
 
-                    // Redirect back to the client app with the ticket.
-                    // The client's /auth/callback page will exchange this ticket for a JWT.
-                    const target = new URL(redirectUrl, window.location.origin);
-                    target.searchParams.set("sso_ticket", ticket);
-                    window.location.href = target.toString();
+                    if (!isMounted) return;
 
-                } else if (res.status === 401) {
-                    // ── Not authenticated: redirect to login ─────────────────
-                    console.warn("[CSW SSO] No active session. Redirecting to login.");
+                    if (res.ok) {
+                        const { ticket } = await res.json();
+                        console.log("[CSW SSO] Ticket acquired, redirecting to client.");
 
-                    const loginUrl = new URL("/login", window.location.origin);
-                    loginUrl.searchParams.set("redirect", window.location.pathname + window.location.search);
-                    const app = searchParams.get("app");
-                    if (app) loginUrl.searchParams.set("app", app);
-                    const ref = searchParams.get("ref");
-                    if (ref) loginUrl.searchParams.set("ref", ref);
+                        // Redirect back to the client app with the ticket.
+                        const target = new URL(redirectUrl, window.location.origin);
+                        target.searchParams.set("sso_ticket", ticket);
+                        window.location.href = target.toString();
+                        return;
 
-                    window.location.href = loginUrl.toString();
-                } else {
-                    // Backend error (e.g. 404, 500) — DO NOT redirect to /login to prevent infinite loops!
-                    console.error("[CSW SSO] Ticket endpoint error, status:", res.status);
-                    setErrorMessage(`SSO service received error ${res.status} from backend. Please verify Core API is running.`);
+                    } else if (res.status === 401) {
+                        // ── Not authenticated: redirect to login ─────────────────
+                        console.warn("[CSW SSO] No active session. Redirecting to login.");
+
+                        const loginUrl = new URL("/login", window.location.origin);
+                        loginUrl.searchParams.set("redirect", window.location.pathname + window.location.search);
+                        const app = searchParams.get("app");
+                        if (app) loginUrl.searchParams.set("app", app);
+                        const ref = searchParams.get("ref");
+                        if (ref) loginUrl.searchParams.set("ref", ref);
+
+                        window.location.href = loginUrl.toString();
+                        return;
+                    } else {
+                        // 5xx / 4xx error from backend — retry if attempts remain
+                        if (attempt < MAX_RETRIES) {
+                            await new Promise((r) => setTimeout(r, attempt * 300));
+                            continue;
+                        }
+
+                        console.error("[CSW SSO] Ticket endpoint error, status:", res.status);
+                        if (isMounted) {
+                            setErrorMessage(`SSO service received error ${res.status} from backend. Please verify Core API is running.`);
+                        }
+                        return;
+                    }
+                } catch (error: any) {
+                    // Transient network failure (e.g. initial connection, React StrictMode remount, or server lag)
+                    console.warn(`[CSW SSO] Handshake attempt ${attempt} failed:`, error?.message);
+                    if (attempt < MAX_RETRIES) {
+                        await new Promise((r) => setTimeout(r, attempt * 300));
+                        continue;
+                    }
+
+                    if (isMounted) {
+                        console.error("[CSW SSO] Handshake failed after retries:", error);
+                        setErrorMessage(error?.message || "Failed to connect to authentication server.");
+                    }
                 }
-            } catch (error: any) {
-                console.error("[CSW SSO] Handshake failed:", error);
-                setErrorMessage(error?.message || "Failed to connect to authentication server.");
             }
         };
 
         handleSSO();
+
+        return () => {
+            isMounted = false;
+        };
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [redirectUrl]);
 

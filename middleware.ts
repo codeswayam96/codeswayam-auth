@@ -65,9 +65,9 @@ export async function middleware(req: NextRequest) {
     }
 
     // ── 1. Check route type ──────────────────────────────────────────────────
-    const isPublic    = PUBLIC_PREFIXES.some((p) => pathname.startsWith(p));
+    const isPublic = PUBLIC_PREFIXES.some((p) => pathname.startsWith(p));
     const isProtected = PROTECTED_PREFIXES.some((p) => pathname.startsWith(p));
-    const authToken   = getAuthCookie(req);
+    const authToken = getAuthCookie(req);
     const isAuthenticated = Boolean(authToken);
 
     // ── 2. Guard protected routes AT THE EDGE ───────────────────────────────

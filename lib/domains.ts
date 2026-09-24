@@ -106,6 +106,11 @@ export async function isAllowedRedirect(url: string): Promise<boolean> {
     try {
         const parsed = new URL(url);
         const hostname = parsed.hostname; // e.g. "localhost" or "auraflow.com"
+
+        // ── Fast-path for built-in trusted platform domains (zero network call) ──
+        if (hostname === "localhost" || hostname === "127.0.0.1") return true;
+        if (hostname === "codeswayam.com" || hostname.endsWith(".codeswayam.com")) return true;
+
         const allowedDomains = await getTrustedDomains();
 
         return allowedDomains.some((trusted) => {
